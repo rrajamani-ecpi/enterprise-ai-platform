@@ -8,6 +8,8 @@
 
 **Input**: Derived from SSD_Document.md §3.8 (Admin / Settings / Executive Reporting — Executive Dashboard material only) and §5 (Architectural Debt, "Silent failure-masking in reporting paths") — reframed from "as-is" discovery findings into target requirements. Source facts: on any query error, the executive-stats service masks the failure and returns `status:"OK"` with hardcoded placeholder numbers; the page component has its own second, different hardcoded fallback for the same failure mode — two inconsistent "it broke" datasets for one condition; the dashboard is gated to `isAdmin OR advancedModelAccess`; it is served from a Cosmos-cached document and recomputed via several sequential (artificially delayed, to avoid Cosmos rate limits) queries when stale; growth percentages are clamped to 0 rather than shown negative. A fully-specified, larger `ExecutiveDashboardStats` type (hockey-stick growth, team comparisons, board export) exists with zero implementing service and is out of scope here.
 
+Also merged with `docs/PRODUCT_REQUIREMENTS_DOCUMENT.md` §4.20 (Analytics / Executive Dashboard), per `docs/prd-decomposition-plan.md`, routing REQ-ANALYTICS-1 to this spec. REQ-ANALYTICS-1 (an analytics dashboard summarizing platform usage, backed by cached aggregate statistics) is already fully covered by this spec's entire scope — the dashboard itself (Stories 1–2) and its cache-then-recompute behavior (Story 3; FR-005–FR-007) — no new content added.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - A genuine error surfaces when executive stats fail to load (Priority: P1)

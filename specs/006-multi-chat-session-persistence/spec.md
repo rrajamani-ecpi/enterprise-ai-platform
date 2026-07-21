@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: Derived from SSD_Document.md §3.3 (Multi-Chat / Chat-Home / Lesson Mode) — reframed from "as-is" discovery findings into target requirements, scoped to the Multi-Chat and Chat-Home material only (Lesson Mode / Canvas submission is a separate spec). Source facts: multi-chat quadrant count, persona assignments, and thread associations are held entirely in client-side `useState` with nothing persisted, so a page refresh loses the whole layout; if thread creation fails mid-send, the user's typed message and any attachments are silently dropped (console-log only, no user-facing error); `ChatThreadModel` already models `multiChatSessionId?`/`multiChatPosition?` fields, suggesting a persistence path was designed but never wired up.
+**Input**: Derived from SSD_Document.md §3.3 (Multi-Chat / Chat-Home / Lesson Mode) — reframed from "as-is" discovery findings into target requirements, scoped to the Multi-Chat and Chat-Home material only (Lesson Mode / Canvas submission is a separate spec). Also draws from PRODUCT_REQUIREMENTS_DOCUMENT.md §4.9 (Multi-Chat / model comparison, REQ-MULTICHAT-1), per `docs/prd-decomposition-plan.md`, which routes the base "send one message to N models and compare side-by-side" capability into this spec since prior discovery only documented the persistence and error-handling bugs around it, never the capability itself. Source facts: multi-chat quadrant count, persona assignments, and thread associations are held entirely in client-side `useState` with nothing persisted, so a page refresh loses the whole layout; if thread creation fails mid-send, the user's typed message and any attachments are silently dropped (console-log only, no user-facing error); `ChatThreadModel` already models `multiChatSessionId?`/`multiChatPosition?` fields, suggesting a persistence path was designed but never wired up.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -58,6 +58,23 @@ A user opens Chat-Home to quickly jump into a conversation with one of their fav
 1. **Given** a user with no starred/favorite personas, **When** Chat-Home mounts, **Then** an empty state is shown prompting the user to star personas from the main Assistants page.
 2. **Given** a user with one or more starred personas, **When** Chat-Home mounts, **Then** only those starred personas are listed (non-starred personas the user has access to are excluded).
 
+---
+
+### User Story 4 - Send one message to multiple models and compare responses side-by-side (Priority: P1)
+
+A user opens Multi-Chat with two or more quadrants, each assigned a model/persona, types a single message once, and sends it — the message is dispatched in parallel to every quadrant's assigned model and each model's response renders in its own quadrant, side-by-side, for direct comparison.
+
+**Why this priority**: This is the base capability the rest of this spec exists to protect — Stories 1–2's persistence and error-recovery guarantees are meaningless without the underlying parallel-query, side-by-side-comparison behavior they wrap. It is PRD-designated REQ-MULTICHAT-1 and was never previously specified; prior discovery only covered the persistence and silent-failure bugs around it.
+
+**Independent Test**: Configure a multi-chat session with 2–4 quadrants, each assigned a different model (subject to the caller's role-based model allow-list per spec 014); type one message and send it once; confirm the same message is dispatched in parallel to every quadrant's assigned model and each quadrant renders its own response independently and side-by-side, without the user retyping the message per quadrant.
+
+**Acceptance Scenarios**:
+
+1. **Given** a multi-chat session with N quadrants (2 ≤ N ≤ 4), each assigned a model, **When** the user types one message and sends it once, **Then** that message is dispatched in parallel to every quadrant's assigned model.
+2. **Given** a parallel dispatch to N models, **When** responses arrive, **Then** each quadrant renders its own model's response independently, side-by-side in the same view, without waiting for every other quadrant to complete.
+3. **Given** one model in the parallel dispatch errors or is slower than the others, **When** the remaining models' responses succeed, **Then** those quadrants still render their responses normally rather than being blocked by the slow or failing one.
+4. **Given** a user selecting a model for a quadrant, **When** the model list is presented, **Then** only models permitted by the caller's role-based allow-list are selectable (constraint defined in spec 014; not re-specified here).
+
 ### Edge Cases
 
 - What happens when a persisted multi-chat session references a thread that was since deleted, or a persona that was since deleted or unshared from the user?
@@ -79,6 +96,8 @@ A user opens Chat-Home to quickly jump into a conversation with one of their fav
 - **FR-007**: Following a failed send, the user's typed message text and any attachments MUST remain available for retry without requiring the user to retype or re-attach them.
 - **FR-008**: Chat-Home MUST display only the current user's starred/favorite personas.
 - **FR-009**: WHEN a user has no starred personas, THE SYSTEM SHALL show an empty state prompting the user to star personas from the main Assistants page.
+- **FR-010**: The system MUST let a user author a single message once and dispatch it in parallel to every quadrant's currently assigned model in the active multi-chat session, without requiring the message to be retyped per quadrant (PRD REQ-MULTICHAT-1).
+- **FR-011**: The system MUST render each quadrant's response independently and side-by-side in the same view as responses arrive, such that one model's latency or failure does not block another quadrant's response from displaying (PRD REQ-MULTICHAT-1). Which models a caller may assign to a quadrant is constrained by the role-based model allow-list defined in spec 014 (FR-001, FR-003); this spec does not duplicate that constraint.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -94,6 +113,7 @@ A user opens Chat-Home to quickly jump into a conversation with one of their fav
 - **SC-002**: 0% of simulated thread-creation failures during send result in permanently lost message text or attachments — all are recoverable in the input for retry.
 - **SC-003**: 100% of failed sends produce a visible, user-facing error, replacing today's console-only logging.
 - **SC-004**: 100% of Chat-Home loads for users with zero starred personas show the empty-state prompt; 100% of loads for users with one or more starred personas show only starred personas.
+- **SC-005**: 100% of test-suite single-message sends across 2–4 quadrants result in that same message being dispatched to all assigned models in parallel, with each quadrant's response rendered independently and side-by-side, unblocked by other quadrants' latency or failure.
 
 ## Assumptions
 
@@ -101,3 +121,4 @@ A user opens Chat-Home to quickly jump into a conversation with one of their fav
 - The existing per-thread persona-ownership reliance (multi-chat thread creation trusts that the persona was already scoped to the caller via `FindAllPersonaForCurrentUser`) is unchanged by this spec; no new authorization mechanism is introduced here.
 - The "starred/favorite persona" concept and its storage already exist elsewhere in the system (surfaced via the main Assistants page); this spec only formalizes Chat-Home's read/filter/empty-state behavior against it, not the starring mechanism itself.
 - Lesson Mode and Canvas submission behavior (also under `features/lesson-chat/`, `features/lesson-mode/`) are explicitly out of scope for this spec.
+- Which models a user may assign to a quadrant is governed by the role-based model allow-list computation specified in spec 014-model-access-config-management (FR-001, FR-003); this spec covers only the parallel-send and side-by-side-render behavior of Multi-Chat (User Story 4), not model-access authorization.

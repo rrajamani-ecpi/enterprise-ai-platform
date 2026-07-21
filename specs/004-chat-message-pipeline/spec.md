@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: Derived from SSD_Document.md §3.2 (Chat Core) — reframed from "as-is" discovery findings into target requirements, scoped to the message-limit, prompt-assembly, PII-redaction, tool-orchestration, model-access-control, artifact-security, and sharing material (document ingestion/retrieval is out of scope — covered separately). Source facts: `messageLimitPreflight` runs before any thread/message record is touched and caps fail open on config/counter read failure; client-supplied `dataProducts` are always discarded server-side in favor of the thread's stored values (anti-IDOR); HTML artifacts render in a real sandboxed iframe but React artifacts execute via `react-live` in the same JS realm as the app despite design docs claiming otherwise; shared-thread access checks only "is the caller logged in" (not "is the caller the intended recipient") and shares never expire; tool-specific failure handling is inconsistent (Calculator/Weather let exceptions propagate raw while Map/DataProduct/CSV/ImageGen return a structured `{success:false}` payload); model-access enforcement silently substitutes the default model when a requested model isn't in the caller's role allow-list.
+**Input**: Derived from SSD_Document.md §3.2 (Chat Core) — reframed from "as-is" discovery findings into target requirements, scoped to the message-limit, prompt-assembly, PII-redaction, tool-orchestration, model-access-control, artifact-security, sharing, and persona-invocation material (document ingestion/retrieval is out of scope — covered separately). Source facts: `messageLimitPreflight` runs before any thread/message record is touched and caps fail open on config/counter read failure; client-supplied `dataProducts` are always discarded server-side in favor of the thread's stored values (anti-IDOR); HTML artifacts render in a real sandboxed iframe but React artifacts execute via `react-live` in the same JS realm as the app despite design docs claiming otherwise; shared-thread access checks only "is the caller logged in" (not "is the caller the intended recipient") and shares never expire; tool-specific failure handling is inconsistent (Calculator/Weather let exceptions propagate raw while Map/DataProduct/CSV/ImageGen return a structured `{success:false}` payload); model-access enforcement silently substitutes the default model when a requested model isn't in the caller's role allow-list. Extended per `docs/PRODUCT_REQUIREMENTS_DOCUMENT.md` §4.2 (Conversational Chat (core)) and §4.16 (Artifacts), the primary forward-looking sources, and `docs/prd-decomposition-plan.md`'s routing of §4.2 and §4.16 here, which flags context-window compression (REQ-CHAT-5) and max-thread-size handling (REQ-CHAT-10) as not yet covered by this spec, and separately notes that this spec's existing artifact coverage (User Story 2) addresses only the React sandboxing bug, not the base artifact-panel capability (REQ-ARTIFACT-1) itself. Source facts confirming the gap: `ChatThreadModel` defines `MAX_CHAT_THREAD_SIZE = 2,000,000` and `ChatMessageModelV2`'s `MessageMetadata` carries an optional `compressionEvent` (original/compressed token counts, messages compressed), but neither has any described enforcement/trigger logic in the as-is discovery — the schema anticipates both capabilities without the business logic behind them ever being specified. The remaining REQ-CHAT items (1–4, 6–9) are cross-checked against this spec and its siblings in Assumptions below rather than re-specified. Also closes a gap `docs/prd-decomposition-plan.md` flagged during the Personas merge pass: **REQ-PERSONA-2** ("start a chat directly from a persona, applying its model, instructions, tools, and data products") had no home in spec 009 (CRUD/authorization) or spec 010 (builder/preview) — it is a chat-invocation/usage-flow behavior specified here as User Story 10, cross-referencing spec 009 for the `PersonaModel` schema itself rather than redefining it.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -93,6 +93,89 @@ A user's persona or request specifies a model. The system must resolve the calle
 4. **Given** a CSV export containing a value starting with `= + - @` or a control character, **When** it is exported, **Then** the value is quote-prefixed to defeat spreadsheet formula/DDE injection.
 5. **Given** an unhandled exception anywhere in the chat entry point or stream execution, **When** it occurs, **Then** the client receives a generic 500 with no internal error detail leaked.
 
+---
+
+### User Story 6 - Long threads stay within the model's context window via compression (Priority: P2)
+
+A conversation grows long enough that its accumulated token count approaches the active model's context window. Today `ChatMessageModelV2`'s `MessageMetadata` already models a `compressionEvent` field (original/compressed token counts, messages compressed), but no described logic in the current system actually triggers compression, meaning long threads risk exceeding the model's context window with no defined fallback.
+
+**Why this priority**: Per PRD §4.2 (REQ-CHAT-5), this is core conversational-chat capability, not an edge case — an uncompressed thread that exceeds the context window either fails the model call outright or silently truncates in an unspecified way. It ranks below the P1 security/data-integrity stories above but is a functional gap serious enough to block long-running conversations.
+
+**Independent Test**: Build a thread whose accumulated token count approaches the active model's configured `contextWindowSize`, send another message, and confirm older messages are compressed into a retrievable summary before prompt assembly, with the resulting prompt staying within the context window and a `compressionEvent` recorded.
+
+**Acceptance Scenarios**:
+
+1. **Given** a thread's accumulated token count approaches the active model's configured `contextWindowSize`, **When** the user sends another message, **Then** the system compresses/summarizes the oldest portion of the thread's history before assembling the prompt, so the effective prompt stays within the context window.
+2. **Given** a compression event occurs, **When** it completes, **Then** `MessageMetadata.compressionEvent` records the original token count, the compressed token count, and the number of messages compressed.
+3. **Given** a thread that has been compressed, **When** the user views the thread's history, **Then** a retrievable summary of the compressed messages remains accessible rather than being discarded outright.
+4. **Given** a thread whose token count is well within the context window, **When** a new message is sent, **Then** no compression occurs and the full history is used unchanged.
+
+---
+
+### User Story 7 - Threads approaching the maximum stored size are handled deterministically (Priority: P2)
+
+A thread's persisted size grows toward `MAX_CHAT_THREAD_SIZE` (2,000,000). Today this constant exists on `ChatThreadModel` but no described logic enforces it, meaning a thread that crosses this boundary risks an unhandled storage-layer failure rather than a defined, user-facing outcome.
+
+**Why this priority**: Per PRD §4.2 (REQ-CHAT-10), an oversize thread must fail safely and predictably, the same way Story 1 requires predictable, non-mutating behavior for blocked messages. Ranked alongside Story 6 since both are schema-modeled-but-unenforced gaps in the same domain.
+
+**Independent Test**: Grow a thread's persisted size to at/near `MAX_CHAT_THREAD_SIZE`, send an additional message that would push it over, and confirm the system follows a defined, deterministic path (typed rejection, or compression per Story 6) rather than an unhandled storage error.
+
+**Acceptance Scenarios**:
+
+1. **Given** a thread's persisted size is at or approaching `MAX_CHAT_THREAD_SIZE`, **When** a new message would push it over the limit, **Then** the system follows a defined, deterministic handling path (e.g., a typed rejection, or compression per Story 6) rather than surfacing an unhandled storage-layer failure.
+2. **Given** a thread at `MAX_CHAT_THREAD_SIZE` that cannot accept a new message under the enforced handling path, **When** the user attempts to continue it, **Then** the user receives a distinct, typed error rather than a silent failure or generic 500.
+3. **Given** a thread well under `MAX_CHAT_THREAD_SIZE`, **When** messages are sent, **Then** no oversize handling is triggered.
+
+---
+
+### User Story 8 - Conversation and per-message feedback is captured at a configurable sample rate (Priority: P3)
+
+A user finishes a conversation, or reacts to a specific assistant message, and the system prompts for optional feedback: a 1-5 conversation rating, or a per-message thumbs up/down. Prompting is governed by a configurable sampling rate so not every conversation or message is prompted. Submitted feedback is validated, ownership-checked, and forwarded exactly as spec 017 already defines for feedback submissions — this story covers only the rating/thumb capture and sampling layer PRD §4.2 (REQ-CHAT-9) adds on top of that.
+
+**Why this priority**: The underlying proxy/ownership/non-persistence mechanics (spec 017, User Story 3, FR-008–FR-010) are already specified and correct; what's missing is the conversation-rating-plus-per-message-thumb capture shape and the configurable sampling rate that governs when it's offered. Ranked P3 as a capture/UX layer, not a security or data-integrity gap.
+
+**Independent Test**: Configure a sampling rate, exercise the chat surface across multiple conversations and messages, and confirm the conversation-rating (1-5) and per-message thumb prompts appear at approximately the configured rate; confirm a submitted rating or thumb is forwarded via the same ownership-checked path spec 017 defines.
+
+**Acceptance Scenarios**:
+
+1. **Given** a configurable sampling rate, **When** a user completes a conversation, **Then** the conversation-rating (1-5) prompt is shown only at approximately the configured sampling rate, not on every conversation.
+2. **Given** an assistant message, **When** the user submits a thumbs up/down on it, **Then** it is captured as feedback tied to that specific message.
+3. **Given** a conversation rating or per-message thumb is submitted, **When** it is processed, **Then** it is validated, ownership-checked against the caller's own thread, and forwarded to the feedback service via the same proxy path defined in spec 017 (FR-008–FR-010), without re-implementing that validation/forwarding logic here.
+
+---
+
+### User Story 9 - Assistant-generated artifacts render in a dedicated, persisted panel separate from chat (Priority: P2)
+
+A user asks a persona to produce something interactive — runnable code, a rendered UI component — and expects it to appear in its own workspace alongside the conversation, not as an inline chat bubble, and to still be there (in the same state) if they navigate away and come back. Today this spec only addresses whether React artifacts are safely isolated when they render (Story 2); it does not specify the underlying capability of generating an artifact, displaying it in a dedicated panel, or persisting its state separately from the chat transcript.
+
+**Why this priority**: Per PRD §4.16 (REQ-ARTIFACT-1), this is the base artifact capability that Story 2's sandboxing guarantee sits on top of — without it, there is no specified panel or state store for that isolation to apply to. Ranked P2: it is a foundational capability gap, not a security defect, so it ranks below the P1 security/data-integrity stories but above the lower-priority capture/regression stories.
+
+**Independent Test**: Prompt a persona to generate an artifact and confirm it renders in a dedicated panel distinct from the message list; confirm the panel's content/view state is retrievable from its own store after navigating away and returning, independent of `ChatMessageModelV2`.
+
+**Acceptance Scenarios**:
+
+1. **Given** a persona response that includes a generatable artifact (code or UI component), **When** the response completes, **Then** the artifact is displayed in a dedicated panel separate from the chat message transcript, not inline as a chat bubble.
+2. **Given** an artifact panel open for a thread, **When** the user sends another chat message or navigates within the thread, **Then** the artifact's content and view state persist in their own state store, distinct from the chat message store.
+3. **Given** a thread containing one or more previously generated artifacts, **When** the user reopens that thread, **Then** the artifact state is retrievable from its dedicated store without depending on the chat transcript.
+4. **Given** an artifact of type `html`, `react`, or `svg` rendering in the dedicated panel, **When** it executes, **Then** the isolation/sanitization guarantees already defined in User Story 2 (FR-013–FR-016) apply unchanged — this story does not restate or alter those security requirements.
+
+---
+
+### User Story 10 - Starting a chat from a persona applies its full configuration (Priority: P2)
+
+A user selects a persona and starts a new chat directly from it. Today, `ChatThreadModel` carries `personaId`, `personaMessage`, and `model` fields, but nothing in this spec specifies that starting a chat from a persona must actually copy that persona's current model, instructions, enabled tools, and attached data products into the new thread — the base persona-invocation flow was unspecified in any existing spec.
+
+**Why this priority**: Per PRD §4.2 (REQ-PERSONA-2), this is core usage-flow behavior — without it, a persona is just a saved record with no defined effect on the chat it produces. Ranked P2: it is a foundational capability gap like Stories 6/7/9, not a security or data-integrity defect, so it ranks below the P1 stories above.
+
+**Independent Test**: Create a persona with a specific model, persona message, one or more enabled extensions, and an attached data product; start a new chat from it; confirm the resulting thread's initial model, personaMessage, enabled extensions, and dataProducts match the persona's configuration at the moment the chat was started.
+
+**Acceptance Scenarios**:
+
+1. **Given** a persona with a configured model, persona message, enabled extensions, and attached data products, **When** a user starts a new chat from that persona, **Then** the new thread is created with that model, that persona message, those enabled extensions, and those data products.
+2. **Given** a persona with an optional `startingMessage`, **When** a chat is started from it, **Then** the new thread's initial message state is seeded from that `startingMessage`.
+3. **Given** a persona whose configured model falls outside the current caller's role allow-list, **When** a chat is started from it, **Then** the same model-substitution gate (FR-020/FR-021) applies — starting a chat from a persona MUST NOT bypass model-access enforcement.
+4. **Given** a thread already created from a persona, **When** that source persona is later edited (e.g., its persona message changes), **Then** the existing thread's configuration is unaffected — persona configuration is captured as a snapshot at thread-creation time, not a live reference.
+
 ### Edge Cases
 
 - Should the silent default-model substitution (User Story 5) become user-visible (e.g., a notice that the requested model was unavailable and a substitute was used), or should it remain silent as today? This spec keeps the substitution behavior itself unchanged and flags the visibility question as open rather than mandating a UI change.
@@ -101,6 +184,9 @@ A user's persona or request specifies a model. The system must resolve the calle
 - What is the correct behavior when a tool times out (30s default, up to 150s override) versus when it throws — do both now funnel into the same structured failure shape from Story 4, or is "timed out" treated as a distinct, still-consistent case?
 - How does artifact isolation for React interact with legitimate use cases that currently rely on same-realm access (if any) — does closing the isolation gap break any existing artifact functionality that assumed shared-realm behavior?
 - What happens when a recipient's identity changes (e.g., email change) between share creation and access — does recipient-matching need to tolerate identity drift?
+- What happens when a thread simultaneously approaches both `MAX_CHAT_THREAD_SIZE` (Story 7) and the model's context window (Story 6) — does compression run first and potentially avert the size cap, or are the two checks independent?
+- Does a compression event (Story 6) count toward or reset a thread's progress toward `MAX_CHAT_THREAD_SIZE` (Story 7), given compression reduces token count but not necessarily persisted message count?
+- What is shown to the user when a compressed summary (Story 6) itself would need to be compressed again on a subsequent long-running thread — is recursive compression supported, or is there a hard ceiling?
 
 ## Requirements *(mandatory)*
 
@@ -130,14 +216,31 @@ A user's persona or request specifies a model. The system must resolve the calle
 - **FR-022**: Image attachments exceeding the target provider's size limit (e.g., >5MB for Anthropic) MUST be rejected pre-flight with 400 `IMAGE_TOO_LARGE`.
 - **FR-023**: CSV export values starting with `= + - @` or a control character MUST be quote-prefixed to defeat spreadsheet formula/DDE injection.
 - **FR-024**: Any unhandled exception in the chat entry point or stream execution MUST result in a generic 500 response that never leaks internal error detail to the client.
+- **FR-025**: WHEN a thread's accumulated token count approaches the active model's configured `contextWindowSize`, THE SYSTEM MUST compress/summarize the oldest portion of the thread's message history before assembling the prompt, keeping the effective prompt within the model's context window.
+- **FR-026**: Compression events MUST be recorded on `MessageMetadata.compressionEvent`, capturing the original token count, the compressed token count, and the number of messages compressed.
+- **FR-027**: A compressed thread MUST retain a retrievable summary of the compressed messages rather than discarding the compressed content outright.
+- **FR-028**: The system MUST enforce a defined, deterministic behavior when a thread's persisted size reaches or would exceed `MAX_CHAT_THREAD_SIZE` (2,000,000), rather than allowing an unhandled storage-layer failure.
+- **FR-029**: WHEN a thread at or near `MAX_CHAT_THREAD_SIZE` cannot accept a new message under the enforced handling path, THE SYSTEM MUST reject the request with a distinct, typed error rather than a generic 500.
+- **FR-030**: The system MUST support capturing an optional conversation-level rating (1-5) and optional per-message thumbs up/down feedback.
+- **FR-031**: Feedback prompting (conversation rating and per-message thumb) MUST be governed by a configurable sampling rate, so not every conversation or message is prompted.
+- **FR-032**: Conversation ratings and per-message thumbs MUST be forwarded through the same ownership-checked, non-persisted proxy path defined in spec 017 (FR-008–FR-010); this spec does not re-specify that validation/forwarding behavior.
+- **FR-033**: The system MUST support generating an interactive artifact (runnable/rendered code or a UI component) from persona/model output.
+- **FR-034**: Generated artifacts MUST display in a dedicated panel, visually and structurally separate from the chat message transcript.
+- **FR-035**: Artifact content and panel view state MUST be persisted in a state store distinct from `ChatMessageModelV2`, and MUST remain retrievable independent of the chat message history. Isolation and sanitization guarantees for artifact execution remain as specified by FR-013–FR-016 (User Story 2) and are not altered by this requirement.
+- **FR-036**: WHEN a user starts a chat from a persona, THE SYSTEM MUST initialize the new thread's model, persona message, enabled extensions, and attached data products from that persona's configuration at the moment of creation (per `PersonaModel`, schema owned by spec 009).
+- **FR-037**: WHEN a persona defines a `startingMessage`, THE SYSTEM MUST use it to seed the new thread's initial message state.
+- **FR-038**: A persona's configured model MUST still be resolved through the model-access gate (FR-020/FR-021) when starting a chat from it — persona invocation MUST NOT bypass role-based model substitution.
+- **FR-039**: A thread's persona-derived configuration (model, persona message, extensions, data products) MUST be captured as a snapshot at creation time; subsequent edits to the source persona MUST NOT retroactively alter already-created threads.
 
 ### Key Entities *(include if feature involves data)*
 
-- **ChatThreadModel**: owned chat thread; `version` (`v1`/`v2`/`v3`, only `v3` writable), stored `dataProducts`, sharing fields (`isShared`, `shareId`, `sharedBy`, `sharedAt`, `clonedFromShareId`). Extended by this spec to require a recorded intended recipient and an expiry for any active share.
-- **ChatMessageModelV2**: Cosmos document holding `messages: AcceleratorUIMessage[]`; unaffected in shape by this spec, but its creation is gated entirely by the preflight checks in Story 1.
+- **ChatThreadModel**: owned chat thread; `version` (`v1`/`v2`/`v3`, only `v3` writable), stored `dataProducts`, sharing fields (`isShared`, `shareId`, `sharedBy`, `sharedAt`, `clonedFromShareId`). Extended by this spec to require a recorded intended recipient and an expiry for any active share, and (Story 7) to enforce a deterministic outcome once persisted size reaches `MAX_CHAT_THREAD_SIZE` (2,000,000).
+- **ChatMessageModelV2**: Cosmos document holding `messages: AcceleratorUIMessage[]`; its creation is gated entirely by the preflight checks in Story 1. Extended by this spec (Story 6) to require `MessageMetadata.compressionEvent` be populated whenever compression runs, rather than remaining an unused schema field.
 - **ToolResult**: the structured outcome of any tool invocation; standardized by this spec to `{success: boolean, data?, error?}` across all tools, replacing today's raw-exception path for Calculator/Weather.
-- **Artifact**: a model-generated renderable object of type `html` | `react` | `svg`; each type's isolation/sanitization guarantee is defined explicitly by this spec (FR-013–FR-016).
+- **Artifact**: a model-generated renderable object of type `html` | `react` | `svg`, displayed in a dedicated panel separate from the chat transcript with its own persisted state store (FR-033–FR-035); each type's isolation/sanitization guarantee is defined explicitly by this spec (FR-013–FR-016).
+- **ArtifactPanelState**: the persisted view/content state of a thread's artifact panel, stored separately from `ChatMessageModelV2` so artifact state survives navigation independent of the chat message history (FR-035).
 - **SystemModelConfig / ModelConfigDocument**: role allow-lists and per-model flags (`requiresAdvancedModelAccess`, `isEnabled`) that drive the model-substitution gate in FR-020/FR-021.
+- **PersonaModel** *(schema owned by spec 009, referenced here only)*: the source configuration (model, `personaMessage`, `extensions`, `dataProducts`, `startingMessage`) that FR-036/FR-037 snapshot into a new `ChatThreadModel` at chat-start time.
 
 ## Success Criteria *(mandatory)*
 
@@ -151,6 +254,14 @@ A user's persona or request specifies a model. The system must resolve the calle
 - **SC-006**: 100% of forced failures across all six tools (Calculator, Weather, Map, DataProduct, CSV, ImageGen) return the identical structured `{success:false}` shape, with 0 raw exceptions escaping to the stream.
 - **SC-007**: 100% of model requests outside a caller's resolved allow-list result in the default model being used instead, with 0 requests reaching an unauthorized or under-gated model.
 - **SC-008**: 100% of image uploads over the provider size limit are rejected pre-flight (never reach the provider call).
+- **SC-009**: 100% of threads whose token count reaches the configured context-window threshold trigger compression before the next prompt assembly, with the resulting prompt size within the model's context window, across a test corpus of varying model context sizes.
+- **SC-010**: 100% of compression events produce a persisted `compressionEvent` record with accurate original/compressed token counts.
+- **SC-011**: 100% of simulated attempts to write a message that would push a thread's stored size over `MAX_CHAT_THREAD_SIZE` result in the defined handling path (typed rejection or compression), with 0 unhandled storage errors.
+- **SC-012**: Feedback prompts (conversation rating, per-message thumbs) appear within a statistically reasonable tolerance of a configured sampling rate, across a repeated test run.
+- **SC-013**: 100% of generated artifacts across a test corpus render in the dedicated artifact panel rather than inline in the chat transcript.
+- **SC-014**: 100% of artifact panel state, across a test corpus of navigation/reload scenarios, remains retrievable from its own store after the user navigates away and returns, independent of the chat message store.
+- **SC-015**: 100% of chats started from a persona have their initial model, persona message, enabled extensions, and data products match that persona's configuration at creation time, across a test corpus of personas with varying configurations.
+- **SC-016**: 100% of chats started from a persona whose configured model falls outside the caller's allow-list are substituted per FR-020/FR-021, with 0 bypasses via the persona-invocation path.
 
 ## Assumptions
 
@@ -160,3 +271,6 @@ A user's persona or request specifies a model. The system must resolve the calle
 - The default-model substitution behavior in User Story 5 is retained as-is; whether to make the substitution visible to the end user is explicitly called out as an open edge case, not decided by this spec.
 - Existing Azure App Service idle-stream behavior (~60s reset) and the 15-second keepalive countermeasure are retained unchanged by this spec.
 - "Consistent structured tool failure" reuses the `{success:false}` shape already used by Map/DataProduct/CSV/ImageGen today, rather than introducing a new envelope.
+- **PRD §4.2 cross-check — REQ-CHAT-1 through REQ-CHAT-9**: incremental token-by-token streaming (REQ-CHAT-1) is pre-existing, correctly-functioning baseline behavior underlying FR-009/FR-010 and is not re-specified here. Thread create/list/rename/delete/continue (REQ-CHAT-2) is likewise pre-existing baseline persistence behavior, with the read-only-legacy-thread and multi-chat-specific persistence edges already covered by FR-002 and by spec 006 respectively. Role-based model allow-listing (REQ-CHAT-3) is fully covered by User Story 5 / FR-020–FR-021 (see also spec 014 for registry/catalog management). Configurable message limits (REQ-CHAT-4) are fully covered by User Story 1 / FR-001–FR-006. Markdown/math/code/diagram rendering (REQ-CHAT-6) is pre-existing baseline rendering behavior with no identified defect and is not re-specified here. Citations (REQ-CHAT-7) are fully specified by spec 005, User Story 6 (citation production/persistence from retrieved chunks). Attachments (REQ-CHAT-8) split across two existing surfaces: document attachments routed to retrieval are covered by spec 005's ingestion pipeline; image attachments routed to multimodal models are covered by this spec's FR-022 (pre-flight size validation) with model-side multimodal handling being pre-existing baseline behavior. Feedback capture (REQ-CHAT-9) is split: the ownership-checked, non-persisted proxy-forwarding mechanics are fully specified by spec 017, User Story 3 (FR-008–FR-010); the conversation-rating/per-message-thumb capture shape and configurable sampling rate PRD §4.2 adds on top of that proxy are newly specified here as User Story 8 / FR-030–FR-032, which explicitly defers to spec 017 rather than duplicating its validation/forwarding FRs.
+- **PRD §4.16 cross-check — REQ-ARTIFACT-1**: the base artifact-panel capability (generation, dedicated panel display, and state persistence separate from the chat transcript) is newly specified here as User Story 9 / FR-033–FR-035. This is additive to, not a restatement of, the artifact isolation/sandboxing guarantees already specified in User Story 2 / FR-013–FR-016, which continue to govern how each artifact type (`html`/`react`/`svg`) executes safely once displayed in the panel this story defines.
+- **PRD §4.7 cross-check — REQ-PERSONA-2**: the persona-invocation flow (start a chat from a persona, applying its full configuration) is newly specified here as User Story 10 / FR-036–FR-039, closing the gap `docs/prd-decomposition-plan.md` flagged after the Personas merge pass found it had no home in spec 009 or spec 010. This spec owns only the invocation/bootstrap behavior; the `PersonaModel` schema itself (fields, validation, authorization) remains owned by spec 009 and is referenced, not redefined, here.

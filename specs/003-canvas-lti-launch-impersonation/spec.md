@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: Derived from SSD_Document.md §3.1 (Auth & Identity — Canvas LTI launch and admin Student-View impersonation) and §5 (Architectural Debt — JTI-replay-cache multi-replica gap) — reframed from "as-is" discovery findings into target requirements. Source facts: `/api/auth/canvas-launch` verifies a signed JWT from an external Canvas Integration Service (RS256/JWKS, pinned issuer/audience, required claims, one-time `jti` replay protection) and mints a NextAuth session directly (`isStudent:true`, 8-hour cookie, redirect to `/lesson/{personaId}` after regex validation); the in-memory `jti` replay cache does not share state across replicas even though Redis is required in production, and nothing enforces that at runtime; admin impersonation mints a 1-hour HMAC cookie bound to the admin's own hashed identity, constant-time-compared, `__Host-` prefixed in production, and re-verified on every `jwt()` callback as the sole source of truth for the role downgrade, but the audit event today is console-log only. The general session-resolution/role-derivation logic and the three-way duplication of the downgrade check are out of scope here (see spec 002).
+**Input**: Derived from SSD_Document.md §3.1 (Auth & Identity — Canvas LTI launch and admin Student-View impersonation) and §5 (Architectural Debt — JTI-replay-cache multi-replica gap) — reframed from "as-is" discovery findings into target requirements. Source facts: `/api/auth/canvas-launch` verifies a signed JWT from an external Canvas Integration Service (RS256/JWKS, pinned issuer/audience, required claims, one-time `jti` replay protection) and mints a NextAuth session directly (`isStudent:true`, 8-hour cookie, redirect to `/lesson/{personaId}` after regex validation); the in-memory `jti` replay cache does not share state across replicas even though Redis is required in production, and nothing enforces that at runtime; admin impersonation mints a 1-hour HMAC cookie bound to the admin's own hashed identity, constant-time-compared, `__Host-` prefixed in production, and re-verified on every `jwt()` callback as the sole source of truth for the role downgrade, but the audit event today is console-log only. The general session-resolution/role-derivation logic and the three-way duplication of the downgrade check are out of scope here (see spec 002). Additionally draws from `docs/PRODUCT_REQUIREMENTS_DOCUMENT.md` §2 (User Roles & Personas) and §4.1 (Authentication, Sessions & Access Control), which add: a stable LMS-derived identity requirement for Canvas-launched students without a corporate email (REQ-ROLE-3), and an explicit entry-and-exit audit requirement for reversible Student-View impersonation (REQ-AUTH-5). This pass additionally incorporates `docs/PRODUCT_REQUIREMENTS_DOCUMENT.md` §4.11 (Canvas/LTI Integration), which supplies REQ-LTI-1 (signed-launch-token validation and replay protection — already covered by FR-001–FR-011), REQ-LTI-6 (no identity collision across multiple LMS environments — already covered by FR-006), and REQ-LTI-7 (routing LMS launch/validation failures to a dedicated error page with diagnostic codes — prior acceptance scenarios described this behavior without a standalone requirement, so it is formalized here as FR-018/SC-007).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -60,18 +60,19 @@ An admin enters Student View to see the app as a student would; every subsequent
 
 ---
 
-### User Story 4 - Every impersonation session start is durably recorded for audit (Priority: P3)
+### User Story 4 - Every impersonation session start and end is durably recorded for audit (Priority: P3)
 
-Compliance and security review need to know, after the fact, which admin viewed the app as a student, when, and for how long — today this event is written only to console output, which is not queryable and does not survive log rotation or process restart.
+Compliance and security review need to know, after the fact, which admin viewed the app as a student, when, for how long, and when it ended — today only the start event is written, and only to console output, which is not queryable and does not survive log rotation or process restart. Impersonation must also be reversible: an admin should be able to explicitly end Student View before the 1-hour cookie expires.
 
 **Why this priority**: Important for compliance and incident response, but it doesn't block the impersonation flow itself from working correctly, so it's ranked below Stories 1–3.
 
-**Independent Test**: Start an impersonation session, then confirm a durable, queryable audit record exists (admin identity, timestamp, scope) independent of application console/log output, and that it survives an application restart.
+**Independent Test**: Start an impersonation session, then confirm a durable, queryable audit record exists (admin identity, timestamp, scope) independent of application console/log output, and that it survives an application restart. Separately, explicitly end Student View before expiry and confirm the admin's own role flags are immediately restored and a matching exit audit record is written.
 
 **Acceptance Scenarios**:
 
 1. **Given** an admin starts Student View, **When** the impersonation cookie is issued, **Then** a durable audit record is written capturing the admin's identity, a timestamp, and the impersonation scope.
 2. **Given** a durable audit record was written, **When** the application process restarts, **Then** the record remains retrievable (i.e., it is not solely in-memory or console-only).
+3. **Given** an admin explicitly ends Student View before the cookie expires, **When** the exit occurs, **Then** the admin's own role flags are immediately restored and a durable audit record captures the exit event (admin identity, timestamp, scope) symmetric to the entry record.
 
 ### Edge Cases
 
@@ -89,7 +90,7 @@ Compliance and security review need to know, after the fact, which admin viewed 
 - **FR-003**: The system MUST validate `exp`/`nbf`/`iat` and reject expired, not-yet-valid, or malformed tokens.
 - **FR-004**: The system MUST reject a launch JWT missing any required claim.
 - **FR-005**: The system MUST atomically consume the JWT's `jti` as one-time-use and reject any launch presenting a previously-consumed `jti`.
-- **FR-006**: On successful verification, the system MUST mint a NextAuth session with `isStudent:true`, all other role flags `false`, and an 8-hour cookie expiry.
+- **FR-006**: On successful verification, the system MUST mint a NextAuth session with `isStudent:true`, all other role flags `false`, an 8-hour cookie expiry, and a stable user identity derived from a hash of `{canvas_env}:{canvas_user_id}` rather than a corporate email — the same `canvas_user_id` from different `canvas_env` values MUST resolve to distinct identities. *(PRD REQ-ROLE-3; see spec 002 FR-014 for the general identity-hashing requirement for non-LMS sessions.)*
 - **FR-007**: The system MUST validate the JWT's `personaId` against `^[A-Za-z0-9_-]{1,128}$` before using it in the post-launch redirect to `/lesson/{personaId}`.
 - **FR-008**: WHEN `NEXTAUTH_SECRET` is unset at launch time, THE SYSTEM SHALL redirect to `/lti/error?code=SESSION_CREATE_FAILED` rather than crashing.
 - **FR-009**: The `jti` replay-protection cache MUST use a shared backend (e.g., Redis) in any deployment configured as multi-instance-capable.
@@ -99,14 +100,17 @@ Compliance and security review need to know, after the fact, which admin viewed 
 - **FR-013**: Impersonation cookie verification MUST use a constant-time comparison.
 - **FR-014**: The impersonation cookie MUST use the `__Host-` prefix in production.
 - **FR-015**: Every `jwt()` callback invocation MUST independently re-verify the impersonation cookie as the sole source of truth for the student-role downgrade (the single-enforcement-point consolidation of this check across call sites is addressed in spec 002, not here).
-- **FR-016**: Every impersonation session start MUST be recorded in a durable, queryable audit log capturing the admin's identity, a timestamp, and the impersonation scope — console-only logging MUST NOT be the sole record.
+- **FR-016**: Every impersonation session start AND end (explicit admin-initiated exit or natural cookie expiry) MUST be recorded in a durable, queryable audit log capturing the admin's identity, a timestamp, and the impersonation scope — console-only logging MUST NOT be the sole record. *(PRD REQ-AUTH-5)*
+- **FR-017**: The system MUST allow an admin to explicitly end Student View before the 1-hour cookie expires (reversible impersonation), immediately restoring the admin's own role flags. *(PRD REQ-AUTH-5)*
+- **FR-018**: Every Canvas/LMS launch validation failure (bad signature, issuer/audience mismatch, expired/malformed token, missing claim, replayed `jti`, invalid `personaId`) MUST route to a dedicated LTI error page (`/lti/error`) carrying a specific diagnostic error code, and MUST NOT proceed to session creation. *(PRD REQ-LTI-7)*
 
 ### Key Entities *(include if feature involves data)*
 
 - **CanvasLaunchJWT**: external, RS256-signed contract — `iss`, `aud`, `exp`/`nbf`/`iat`/`jti`, `canvas_env`, `canvas_user_id`, `canvas_course_id`, `canvas_assignment_id?`; single-use per `jti`.
 - **ImpersonateCookiePayload**: `{userIdHash, mode:"student", exp}` — HMAC-SHA256-signed, bound to the issuing admin's own hashed identity, 1-hour lifetime.
 - **JTI Replay Cache Entry**: a consumed-token marker keyed by `jti`, requiring shared (cross-instance) visibility wherever the app runs as more than one instance.
-- **Impersonation Audit Record**: durable record of an impersonation session start — admin identity, timestamp, scope — independent of application log output.
+- **Impersonation Audit Record**: durable record of an impersonation session's start and end (explicit exit or expiry) — admin identity, timestamp, scope — independent of application log output.
+- **LMS Student Identity Key**: hash of `{canvas_env}:{canvas_user_id}`, used as the stable storage partition key for Canvas-launched student sessions in place of a corporate-email hash (see spec 002 FR-014 for the equivalent email-based scheme).
 
 ## Success Criteria *(mandatory)*
 
@@ -116,6 +120,9 @@ Compliance and security review need to know, after the fact, which admin viewed 
 - **SC-002**: 0 replay successes in a multi-instance test topology once a shared cache backend is configured; 100% of multi-instance-configured deployments without a shared cache backend fail to start.
 - **SC-003**: 0 impersonation cookies accepted across a forged/cross-admin/tampered-cookie test suite.
 - **SC-004**: 100% of impersonation session starts produce a durable audit record that remains retrievable after an application restart.
+- **SC-005**: 100% of impersonation session exits (explicit or expiry-driven) produce a durable audit record symmetric to the entry record, verified across a test corpus.
+- **SC-006**: 100% of Canvas launches with identical `{canvas_env, canvas_user_id}` pairs resolve to the same stable identity, and identical `canvas_user_id` values under different `canvas_env` resolve to distinct identities.
+- **SC-007**: 100% of Canvas/LMS launch validation failures across the full failure-mode corpus (signature, issuer/audience, expiry, missing claim, replay, invalid personaId) redirect to `/lti/error` with a diagnostic code, and 0% proceed to session creation.
 
 ## Assumptions
 
@@ -124,3 +131,5 @@ Compliance and security review need to know, after the fact, which admin viewed 
 - Redis is the reference shared-cache backend per the source documentation; any distributed store offering atomic check-and-set semantics satisfies FR-009/FR-010.
 - The durable audit log in FR-016 reuses existing structured-logging/persistence infrastructure elsewhere in the codebase rather than introducing a new storage system, consistent with the logging-convergence target noted in SSD_Document.md §5.
 - Open-redirect hardening on the NextAuth `redirect` callback and the absence of a root `middleware.ts` (route-group gating plus `proxy.ts` instead) are unchanged by this spec.
+- REQ-ROLE-3's LMS-identity-hash requirement is satisfied by hashing the `canvas_env:canvas_user_id` pair already present on `CanvasLaunchJWT` (FR-006); this spec does not introduce a new identity scheme, only formalizes hashing that claim pair. The general (non-LMS) identity-hashing requirement is spec 002's concern (FR-014).
+- "Reversible" impersonation (FR-017) reuses the existing Student-View exit affordance if one already exists in the admin UI; this spec does not require a new UI surface, only that the exit path (however triggered) restores role flags and is audited.

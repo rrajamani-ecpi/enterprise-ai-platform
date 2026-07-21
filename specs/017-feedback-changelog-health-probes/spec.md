@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: Derived from SSD_Document.md §3.11 (Domain: Support Features) — reframed from "as-is" discovery findings into target requirements. Source facts: the changelog source directory has been removed from the repository entirely, yet the changelog-reading function has no existence check or try/catch around it, so `/changelog` and version-alert's "latest version" lookup would fail at runtime unless the directory is repopulated out-of-band at deploy time; health endpoints are intentionally unauthenticated (required for orchestrator probing) but leak raw dependency error strings to any caller; feedback is a pure proxy — validated, ownership-checked against the caller's own thread, forwarded to an external ECPI Feedback API, never persisted locally, with proxy failures treated as non-critical (logged only); version-alert compares the latest changelog version against the user's persisted acknowledgment within a fixed 60-day "within alert period" window, with acknowledging done optimistic-then-persisted and automatic revert on a failed DB write.
+**Input**: Derived from SSD_Document.md §3.11 (Domain: Support Features) and `docs/PRODUCT_REQUIREMENTS_DOCUMENT.md` §4.21 (Changelog & Notifications) — reframed from "as-is" discovery findings into target requirements. Source facts: the changelog source directory has been removed from the repository entirely, yet the changelog-reading function has no existence check or try/catch around it, so `/changelog` and version-alert's "latest version" lookup would fail at runtime unless the directory is repopulated out-of-band at deploy time; health endpoints are intentionally unauthenticated (required for orchestrator probing) but leak raw dependency error strings to any caller; feedback is a pure proxy — validated, ownership-checked against the caller's own thread, forwarded to an external ECPI Feedback API, never persisted locally, with proxy failures treated as non-critical (logged only); version-alert compares the latest changelog version against the user's persisted acknowledgment within a fixed 60-day "within alert period" window, with acknowledging done optimistic-then-persisted and automatic revert on a failed DB write. PRD §4.21 additionally requires real-time WebSocket notifications for long-running operations (REQ-NOTIF-3), a capability not present in the SSD "as-is" findings above; per `docs/prd-decomposition-plan.md` row 4.21, this is the flagged gap this merge adds.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -74,12 +74,31 @@ A user is shown a version alert, dismisses/acknowledges it, and the acknowledgme
 3. **Given** a user acknowledges an alert, **When** the persisted write succeeds, **Then** the acknowledged state remains dismissed on subsequent mounts.
 4. **Given** a user acknowledges an alert, **When** the persisted write fails, **Then** the optimistic dismissal is reverted and the alert reappears rather than silently staying dismissed with no durable record.
 
+---
+
+### User Story 5 - Connected clients receive real-time notification of long-running operation completion (Priority: P3)
+
+A user starts a long-running operation (e.g., a bulk-delete or a document-ingestion job) and continues working elsewhere in the app; when the operation finishes, they receive a notification without needing to poll or refresh.
+
+**Why this priority**: This is new scope flagged by `docs/prd-decomposition-plan.md` (PRD §4.21, REQ-NOTIF-3) — not part of the SSD "as-is" findings this spec otherwise reframes, and not a known defect, so it ranks alongside the other non-defect lock-in stories.
+
+**Independent Test**: Trigger a bulk-delete (or ingestion) job as a connected client, confirm no polling occurs, and confirm a completion notification is received over the real-time channel once the job finishes server-side.
+
+**Acceptance Scenarios**:
+
+1. **Given** a connected client has an active real-time notification channel open, **When** a long-running operation the client initiated (e.g., bulk-delete, ingestion) completes, **Then** the client receives a completion notification over that channel without polling.
+2. **Given** a client's real-time channel is not connected or has dropped, **When** a long-running operation completes, **Then** the completion state is still retrievable through an existing non-real-time means (e.g., on next page load or status query) so the outcome is never lost, only the immediacy of notification is delayed.
+3. **Given** the real-time channel disconnects and reconnects while an operation is in progress, **When** the operation later completes, **Then** the client receives the completion notification on the reconnected channel rather than missing it silently.
+
+---
+
 ### Edge Cases
 
 - What happens when the changelog source exists but is malformed/partially readable (not fully absent)? Story 1's guard must treat this the same as fully missing — a defined fallback, not a crash.
 - What happens when both Cosmos DB and Key Vault are simultaneously unreachable during a readiness check? The response must identify both failing dependencies by name, still with no raw error text.
 - How does version-alert behave for a brand-new user with no persisted acknowledgment at all, when a changelog version already exists? (Should show the alert, per Story 4 Scenario 1's "absent" case.)
 - What happens when feedback references a thread ID that doesn't exist at all (not just one owned by another user)? Must be rejected the same as an unowned thread, before any external call.
+- What happens when a long-running operation completes while the client's real-time channel is disconnected? Per Story 5 Scenario 2, the completion outcome must remain retrievable through a non-real-time means; it must not be lost.
 
 ## Requirements *(mandatory)*
 
@@ -98,6 +117,9 @@ A user is shown a version alert, dismisses/acknowledges it, and the acknowledgme
 - **FR-011**: Version-alert visibility MUST be determined by comparing the latest changelog version against the user's persisted acknowledgment, gated by a fixed 60-day "within alert period" window.
 - **FR-012**: Acknowledging a version alert MUST update the UI state optimistically and then persist the acknowledgment; WHEN the persisted write fails, THE system MUST automatically revert the UI to the un-acknowledged state.
 - **FR-013**: The main menu MUST continue to present a "View as Student" toggle to admin users, driving the existing Student-View impersonation flow.
+- **FR-014**: The system MUST deliver a real-time notification to connected clients when a long-running operation the client initiated (e.g., bulk-delete, ingestion) completes, without requiring the client to poll.
+- **FR-015**: WHEN a client's real-time channel is disconnected at completion time, THE completion outcome MUST remain retrievable through an existing non-real-time means (e.g., status query or next page load); it MUST NOT be lost.
+- **FR-016**: The real-time notification transport MUST be Azure-native, per constitution Principle I (Azure-Only, No AWS Vestiges); it MUST NOT depend on the existing hardcoded AWS API Gateway WebSocket endpoint documented as architectural debt in `docs/SSD_Document.md` §5.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -105,6 +127,7 @@ A user is shown a version alert, dismisses/acknowledges it, and the acknowledgme
 - **FeedbackSubmission**: caller identity, referenced `threadId`, feedback content — validated and ownership-checked in-app, never persisted, forwarded as an external API payload only.
 - **VersionAcknowledgment**: per-user persisted record of the last changelog version acknowledged and when, compared against the 60-day alert window on each app mount.
 - **HealthCheckResult**: per-dependency status (healthy/unhealthy), dependency name, and timeout outcome — deliberately excludes raw error detail from the response surface.
+- **RealTimeNotification**: a message pushed to a connected client over the real-time channel signaling completion of a long-running operation (operation type, operation ID, completion status); the operation's durable completion state lives in its own owning system and is only relayed, not stored, by the notification channel.
 
 ## Success Criteria *(mandatory)*
 
@@ -115,6 +138,8 @@ A user is shown a version alert, dismisses/acknowledges it, and the acknowledgme
 - **SC-003**: 100% of feedback submissions referencing a thread the caller does not own (or that doesn't exist) are rejected before any external API call, across a test corpus of ownership-violation cases.
 - **SC-004**: 100% of simulated ECPI Feedback API outages result in a logged failure and zero user-visible errors, across a repeated test run.
 - **SC-005**: 100% of simulated version-acknowledgment write failures result in the alert reappearing on the next mount (no silently-lost acknowledgment state), across a repeated test run.
+- **SC-006**: 100% of completed long-running operations (bulk-delete, ingestion) result in a real-time notification delivered to a connected client within a defined short interval of completion, across a repeated test run.
+- **SC-007**: 100% of completions occurring while the client's real-time channel is disconnected still surface the outcome via the existing non-real-time means on next check, across a repeated test run.
 
 ## Assumptions
 
@@ -122,3 +147,4 @@ A user is shown a version alert, dismisses/acknowledges it, and the acknowledgme
 - The specific sanitized error taxonomy for health responses (e.g., a fixed enum of dependency names) is left to implementation; the binding requirement is the absence of raw internal error text, not a prescribed response schema.
 - Feedback's external ECPI API contract (request/response shape, auth mechanism) is unchanged by this spec — only the in-app validation, ownership-check, and non-persistence behavior are in scope.
 - The 60-day alert-period window and optimistic-acknowledgment-with-revert mechanism are retained as-is; this spec locks in that behavior rather than changing the window length or persistence strategy.
+- Real-time notification transport (Story 5 / FR-014–016): `docs/SSD_Document.md` §5 documents a live, hardcoded AWS API Gateway WebSocket endpoint used by the existing WebSocketProvider — a tracked architectural-debt item that contradicts the project's Azure-only constitution (Principle I). This spec assumes the new/hardened real-time notification transport is Azure-native (e.g., Azure Web PubSub or SignalR Service) and does not extend or depend on that existing AWS endpoint; migrating or replacing the endpoint itself is implementation detail left to planning, not a change to this requirement.

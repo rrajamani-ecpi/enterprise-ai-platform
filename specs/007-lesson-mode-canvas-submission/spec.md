@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: Derived from SSD_Document.md §3.3 (Multi-Chat / Chat-Home / Lesson Mode) — Lesson Mode and Canvas-submission material only (Multi-Chat/Chat-Home is covered by a separate spec) — reframed from "as-is" discovery findings into target requirements. Source facts: lesson context is derived from the `/lesson/` URL and the persona is looked up via a cross-account-capable finder (since it may be instructor-owned); non-lesson UI is gated in lesson mode; the URL is forced to `/lesson/{personaId}/{threadId}` once a thread exists; a lesson thread whose stored `personaId` doesn't match the URL persona triggers a redirect back (preventing cross-lesson thread access via URL tampering); Canvas identity for submission is always derived from the server-side session, never the request body; submission generates a PDF, POSTs it to the external Canvas Integration Service (Azure-AD service-to-service auth, retried up to 4 times on 429/5xx/network errors, capped at ~37.5MB), and best-effort writes a submission audit record regardless of outcome; `submit-lesson` hard-gates on `isStudentUser` plus an active Canvas launch context. Two gaps are reframed here: an expired-token check currently uses a best-effort unverified decode that fails OPEN on a parse failure (security gap — must fail closed), and upstream Canvas failures are classified via brittle status-code + free-text-message-substring sniffing (fragile — must become contract-based).
+**Input**: Derived from SSD_Document.md §3.3 (Multi-Chat / Chat-Home / Lesson Mode) — Lesson Mode and Canvas-submission material only (Multi-Chat/Chat-Home is covered by a separate spec) — reframed from "as-is" discovery findings into target requirements. Source facts: lesson context is derived from the `/lesson/` URL and the persona is looked up via a cross-account-capable finder (since it may be instructor-owned); non-lesson UI is gated in lesson mode; the URL is forced to `/lesson/{personaId}/{threadId}` once a thread exists; a lesson thread whose stored `personaId` doesn't match the URL persona triggers a redirect back (preventing cross-lesson thread access via URL tampering); Canvas identity for submission is always derived from the server-side session, never the request body; submission generates a PDF, POSTs it to the external Canvas Integration Service (Azure-AD service-to-service auth, retried up to 4 times on 429/5xx/network errors, capped at ~37.5MB), and best-effort writes a submission audit record regardless of outcome; `submit-lesson` hard-gates on `isStudentUser` plus an active Canvas launch context. Two gaps are reframed here: an expired-token check currently uses a best-effort unverified decode that fails OPEN on a parse failure (security gap — must fail closed), and upstream Canvas failures are classified via brittle status-code + free-text-message-substring sniffing (fragile — must become contract-based). This pass additionally incorporates `docs/PRODUCT_REQUIREMENTS_DOCUMENT.md` §4.11 (Canvas/LTI Integration), which supplies REQ-LTI-5 (submitting student work back to the LMS — already covered by FR-006–FR-010) and REQ-LTI-2 (dedicated lesson mode pinning the persona and restricting navigation, with an explicit exit path — the pinning/restriction half is already covered by FR-001–FR-004, but the explicit "exit lesson" affordance was not yet specified and is added here as FR-014/SC-007).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -57,6 +57,7 @@ A student navigates directly to a lesson thread URL, including a URL that refere
 2. **Given** an active lesson session, **When** any non-lesson UI element (voice, extra menu items) would normally appear, **Then** it is gated/hidden.
 3. **Given** a lesson conversation that creates a thread, **When** the thread exists, **Then** the URL is forced to `/lesson/{personaId}/{threadId}`.
 4. **Given** a lesson thread whose stored `personaId` does not match the persona in the current URL, **When** the page loads, **Then** the system redirects back to `/lesson/{personaId}` instead of exposing the mismatched thread's content.
+5. **Given** an active lesson mode session, **When** the student uses the exit-lesson affordance, **Then** the system leaves lesson mode and returns the student to normal (non-lesson) navigation.
 
 ---
 
@@ -99,6 +100,7 @@ A submission to the external Canvas Integration Service fails for a business rea
 - **FR-011**: Canvas launch token expiry classification MUST fail closed: any token that cannot be successfully decoded/parsed MUST be treated as invalid/expired and rejected — it MUST NOT be treated as a valid, unexpired token.
 - **FR-012**: Upstream Canvas submission failures MUST be classified into `NOT_ENROLLED`/`ASSIGNMENT_CLOSED`/`FILE_TOO_LARGE`/`CANVAS_UNREACHABLE`/`UNKNOWN` using a defined, contract-based signal (e.g., a structured error code) from the upstream response, rather than status-code-plus-free-text-substring sniffing, so classification does not silently break when the upstream service's wording changes.
 - **FR-013**: WHEN required Canvas context is missing at submission time, THE SYSTEM MUST reject with `422 CANVAS_CONTEXT_MISSING`.
+- **FR-014**: THE SYSTEM MUST provide an explicit, always-available "exit lesson" affordance in lesson mode that returns the student to normal navigation. *(PRD REQ-LTI-2)*
 
 ### Key Entities *(include if feature involves data)*
 
@@ -117,6 +119,7 @@ A submission to the external Canvas Integration Service fails for a business rea
 - **SC-004**: 100% of upstream failure responses across the `NOT_ENROLLED`/`ASSIGNMENT_CLOSED`/`FILE_TOO_LARGE`/`CANVAS_UNREACHABLE` scenarios are classified correctly via the response contract, with 0 misclassifications when only the upstream free-text wording is changed (contract fields held constant).
 - **SC-005**: 100% of lesson-thread requests with a URL/stored-`personaId` mismatch result in a redirect to `/lesson/{personaId}`, with 0 cases of the mismatched thread's content being rendered.
 - **SC-006**: 100% of submission attempts (successful or failed) produce a best-effort audit record.
+- **SC-007**: 100% of lesson-mode sessions in the test suite expose a working exit-lesson affordance that returns the student to normal navigation on activation.
 
 ## Assumptions
 

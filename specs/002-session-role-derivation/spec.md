@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: Derived from SSD_Document.md §3.1 (Auth & Identity) — reframed from "as-is" discovery findings into target requirements, scoped strictly to session-resolution, role-derivation, and token-refresh behavior. Source facts: the `impersonateAsStudent` role-downgrade is independently re-implemented in three separate places (`jwt()` callback, `session()` callback, `userSession()`), `isContractor` is permanently hardcoded `false` with no AD group configured for it, `getCurrentUser()` with no session throws a raw `Error("User not found")` inconsistent with the structured `ServerActionResponse` envelope used elsewhere, and AAD token-refresh failure sets `session.error="RefreshAccessTokenError"` with no automatic sign-out. Canvas-LTI launch/bootstrap and admin Student-View impersonation-initiation flows are explicitly out of scope — covered by a separate spec.
+**Input**: Derived from SSD_Document.md §3.1 (Auth & Identity) — reframed from "as-is" discovery findings into target requirements, scoped strictly to session-resolution, role-derivation, and token-refresh behavior. Source facts: the `impersonateAsStudent` role-downgrade is independently re-implemented in three separate places (`jwt()` callback, `session()` callback, `userSession()`), `isContractor` is permanently hardcoded `false` with no AD group configured for it, `getCurrentUser()` with no session throws a raw `Error("User not found")` inconsistent with the structured `ServerActionResponse` envelope used elsewhere, and AAD token-refresh failure sets `session.error="RefreshAccessTokenError"` with no automatic sign-out. Canvas-LTI launch/bootstrap and admin Student-View impersonation-initiation flows are explicitly out of scope — covered by a separate spec. Additionally draws from `docs/PRODUCT_REQUIREMENTS_DOCUMENT.md` §2 (User Roles & Personas) and §4.1 (Authentication, Sessions & Access Control), which extend this spec's scope to cover SSO sign-in/session establishment, route protection (including admin-only gating), server-side-only authorization enforcement, and identity-hashing for storage partition keys.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -74,6 +74,39 @@ A user signs in and their AAD `groups` claim is evaluated to set `isAdmin`, `isE
 2. **Given** a user whose `groups` claim contains none of the configured group GUIDs, **When** the session is resolved, **Then** all role flags derived from group membership are `false`.
 3. **Given** a user whose `groups` claim contains multiple configured group GUIDs, **When** the session is resolved, **Then** every corresponding flag is set `true` (mappings are independent, not mutually exclusive).
 
+---
+
+### User Story 5 - Every application route enforces authentication and admin gating server-side (Priority: P2)
+
+A user (or unauthenticated visitor) requests any application route. Except for a small set of designated public routes (health check, sign-in, and LMS launch/error endpoints), the system must require a valid signed-in session before serving the route, and must additionally verify `isAdmin` server-side before serving any admin-only route or action — regardless of what the client-side UI shows or hides.
+
+**Why this priority**: This is the baseline access-control boundary the rest of this spec's role-derivation logic sits behind — if an unauthenticated request could reach a protected route, or a non-admin could reach an admin action by bypassing UI gating, the correctness of role derivation upstream wouldn't matter. Ranked P2 rather than P1 because this route-group/proxy-based gating already exists structurally today (per spec 003's Assumptions); this story locks it in as a regression-tested requirement rather than closing a known live gap.
+
+**Independent Test**: Request each designated public route while unauthenticated and confirm they are served; request every other route while unauthenticated and confirm a redirect to sign-in; request an admin-only route/action with a non-admin session and confirm server-side rejection independent of any client-side UI state.
+
+**Acceptance Scenarios**:
+
+1. **Given** no active session, **When** a request is made to the health-check, login, or LMS launch/error routes, **Then** the request is served without requiring sign-in.
+2. **Given** no active session, **When** a request is made to any other application route, **Then** the system redirects to sign-in rather than serving the route.
+3. **Given** a session with `isAdmin=false`, **When** a request is made to an admin-only route or server action, **Then** the system rejects it server-side, independent of whether the client UI happens to expose the control.
+4. **Given** a session with `isAdmin=false`, **When** a request attempts a model-access, tool-access, sharing, or delete/write action gated by role, **Then** the server-side check — not client UI state — is the sole basis for the decision.
+
+---
+
+### User Story 6 - Storage partition keys never expose raw user identity (Priority: P3)
+
+Any code path that persists or looks up user-scoped data (conversations, preferences, etc.) needs a partition key derived from the user's identity.
+
+**Why this priority**: This is a data-protection hardening requirement rather than an access-control gap — the session/role logic in Stories 1-5 works whether or not the underlying storage key is hashed, so it's ranked lowest, but it's still required by the PRD's identity-handling model for the new platform build.
+
+**Independent Test**: Sign in as a user, confirm the storage partition key used for that user's data is a hash of their normalized email rather than the raw email, and confirm two different casings/whitespace variants of the same email normalize to the same hash.
+
+**Acceptance Scenarios**:
+
+1. **Given** a signed-in user, **When** their session-scoped data is persisted, **Then** the partition key used is a hash of their normalized email, not the raw email address.
+2. **Given** two sign-ins with the same email in different casing/whitespace, **When** each is normalized and hashed, **Then** both resolve to the identical partition key.
+3. **Given** a Canvas-LTI student session (no corporate email), **When** its data is persisted, **Then** it uses the LMS-specific identity-hash scheme defined in spec 003 rather than this email-hash scheme.
+
 ### Edge Cases
 
 - What happens when `impersonateAsStudent` is somehow set on a session that also carries a legitimately-derived `isStudent=true`? (Downgrade logic must be idempotent — re-applying it must not change the outcome.)
@@ -81,26 +114,34 @@ A user signs in and their AAD `groups` claim is evaluated to set `isAdmin`, `isE
 - What happens if `getCurrentUser()` is called mid-token-refresh, before the refresh either succeeds or fails?
 - How does a background/non-request-scoped job (no HTTP session available) distinguish "no session because nothing is signed in" from "no session because this code path never has one" when consuming the new structured error from Story 2?
 - What happens if a token-refresh failure occurs while a request is already in flight (e.g., mid-stream chat response) rather than at session-check time?
+- How does a designated public route (health check, login, LMS launch/error) stay reachable for an unauthenticated caller while every other route redirects, without accidentally widening the public set?
+- What happens when a non-admin session attempts an admin-only server action directly (bypassing the UI entirely, e.g., a direct API call)?
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
 - **FR-001**: The system MUST resolve the current session-scoped `UserModel` via a single shared function whenever a request needs the current user.
-- **FR-002**: The system MUST implement the impersonation role-downgrade (forcing all elevated role flags to `false` and `isStudent` to `true` when `impersonateAsStudent === true`) in exactly one shared implementation.
+- **FR-002**: The system MUST implement the impersonation role-downgrade (forcing all elevated role flags to `false` and `isStudent` to `true` when `impersonateAsStudent === true`) in exactly one shared implementation. *(Satisfies PRD REQ-ROLE-2 — impersonation suppresses role elevation at a single enforcement point.)*
 - **FR-003**: The JWT callback, the session callback, and `userSession()`/`getCurrentUser()` MUST all invoke the single shared downgrade implementation from FR-002 rather than independently re-implementing the downgrade logic.
-- **FR-004**: The system MUST derive `isAdmin`, `isEmployee`, and `isStudent` role flags from AAD `groups` claims via a single shared mapping path, consistent across all session-resolution call sites.
+- **FR-004**: The system MUST derive `isAdmin`, `isEmployee`, and `isStudent` role flags from AAD `groups` claims via a single shared mapping path, consistent across all session-resolution call sites. *(Satisfies PRD REQ-ROLE-1 — roles derived from enterprise SSO group membership at sign-in.)*
 - **FR-005**: WHEN `getCurrentUser()` (or the session-resolution helper it wraps) is called with no active session, THE SYSTEM MUST return a structured error response consistent with the app-wide `ServerActionResponse` envelope, rather than throwing an untyped/generic `Error`.
 - **FR-006**: The structured error from FR-005 MUST allow callers to distinguish "no session" from other failure classes.
 - **FR-007**: WHEN AAD token refresh fails for an active session, THE SYSTEM MUST surface an explicit, user-visible re-authentication prompt on the next client session check, rather than leaving the session usable-looking with only an internal error flag set.
 - **FR-008**: Re-authentication after a token-refresh failure MUST produce a fresh session with role flags re-derived via the FR-004 mapping (not carried over from the stale session).
 - **FR-009**: The impersonation downgrade (FR-002/FR-003) MUST fail closed: if the shared downgrade check cannot be evaluated, the resolved user MUST be treated as unauthenticated/most-restrictive rather than granted elevated flags.
+- **FR-010**: The system SHALL authenticate users via enterprise SSO (OAuth/OIDC) and establish a signed session prior to serving any protected route. *(PRD REQ-AUTH-1)*
+- **FR-011**: The system MUST require a valid session for every application route except designated public routes (health check, login, LMS launch, LMS error), redirecting unauthenticated requests to sign-in. *(PRD REQ-AUTH-2)*
+- **FR-012**: The system MUST additionally restrict admin-only routes and server actions to sessions with `isAdmin=true`, enforced server-side. *(PRD REQ-AUTH-3)*
+- **FR-013**: All authorization decisions — model access, tool access, sharing, delete/write — MUST be enforced server-side; client-side/UI gating MUST NOT be treated as a security boundary. *(PRD REQ-ROLE-4)*
+- **FR-014**: The system MUST hash a user's normalized email before using it as a storage partition key. *(PRD REQ-AUTH-4; the LMS-student identity-hash scheme for Canvas-launched sessions is spec 003's concern.)*
 
 ### Key Entities *(include if feature involves data)*
 
 - **UserModel**: session-derived (not a DB row) — `name`, `email`, `image`, `token`; role flags `isAdmin`, `isEmployee`, `isContractor` (currently always `false` — see Assumptions), `isStudent`; `advancedModelAccess`; `impersonateAsStudent?` (drives the downgrade covered by Stories 1 and 4 of this spec — the mechanism by which impersonation is *initiated* is out of scope here).
 - **Role-derivation mapping**: the configured AAD group-GUID → role-flag table consumed by FR-004; a single source of truth rather than logic duplicated per call site.
 - **Session-resolution error response**: the structured `ServerActionResponse`-shaped result returned for "no session" and related failure modes (FR-005/FR-006), replacing the current raw thrown `Error`.
+- **Storage Partition Key**: a hash of the user's normalized email (or, for Canvas-launched students, the spec-003 LMS identity hash), used to key persisted user-scoped data instead of the raw identifier.
 
 ## Success Criteria *(mandatory)*
 
@@ -111,6 +152,9 @@ A user signs in and their AAD `groups` claim is evaluated to set `isAdmin`, `isE
 - **SC-003**: 100% of no-session `getCurrentUser()` calls in the test suite return the structured `ServerActionResponse`-shaped error rather than an unhandled thrown exception.
 - **SC-004**: 100% of simulated token-refresh failures result in a user-visible re-authentication prompt on the next session check, measured across a test corpus of refresh-failure scenarios.
 - **SC-005**: 100% of AAD group-claim fixtures (each configured group GUID, no group, and multiple groups) produce the expected `isAdmin`/`isEmployee`/`isStudent` flag combination.
+- **SC-006**: 100% of unauthenticated requests to non-public routes redirect to sign-in; 100% of requests to designated public routes succeed without a session, verified by a route-coverage test suite.
+- **SC-007**: 100% of admin-only routes/actions reject non-admin sessions server-side in a test suite that also simulates a client UI that incorrectly exposes the control.
+- **SC-008**: 100% of storage partition keys sampled in tests are hashes, never raw emails, and two normalized-equivalent emails always produce the same key.
 
 ## Assumptions
 
@@ -119,3 +163,5 @@ A user signs in and their AAD `groups` claim is evaluated to set `isAdmin`, `isE
 - The existing `ServerActionResponse` envelope (`{status:"OK", response:T} | {status:"ERROR"|"NOT_FOUND"|"UNAUTHORIZED", errors:[{message}]}`) is reused as-is for FR-005/FR-006 rather than introducing a new error shape specific to auth.
 - "Re-authentication prompt" in Story 3/FR-007 means redirecting the user into the existing sign-in flow; it does not require inventing a new UI surface.
 - The `groups`-claim-to-role-flag mapping table's specific GUID values are an environment/deployment configuration concern, not part of this spec's functional requirements.
+- Enterprise SSO sign-in (REQ-AUTH-1) and baseline route protection (REQ-AUTH-2) are assumed to already exist structurally (route-group/proxy-based gating, per spec 003's Assumptions); Stories 5-6 formalize them as regression-tested requirements rather than describing a rebuild.
+- The LMS-specific identity-hash scheme referenced in FR-014 is defined in spec 003 (Canvas LTI Launch); this spec only requires that non-LMS sessions use a normalized-email hash.

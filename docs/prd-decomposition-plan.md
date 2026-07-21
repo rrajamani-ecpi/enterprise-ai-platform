@@ -15,42 +15,49 @@ This is a **different north star** from [SSD_Document.md](./SSD_Document.md): SS
 
 ## Capability area → spec mapping
 
-Status legend: **merge** = extend an existing `specs/00X` spec with PRD's REQ-### as base FRs (don't restart); **new** = no existing spec covers this, draft fresh from REQ-### statements.
+Status legend: **merge** = extend an existing `specs/00X` spec with PRD's REQ-### as base FRs (don't restart); **new** = no existing spec covers this, draft fresh from REQ-### statements. **✅ done** = merge/creation completed.
 
 | PRD § | Capability | Priority | Status | Notes |
 |---|---|---|---|---|
-| 4.1 | Auth, Sessions & Access Control | P1 | merge → 002, 003 | REQ-AUTH-1..5 mostly already covered; REQ-ROLE-3 (LMS-launch identity without email) cross-check against 003 |
-| 4.2 | Conversational Chat (core) | P1 | merge → 004 | Adds context-window compression (REQ-CHAT-5) and max-thread-size handling (REQ-CHAT-10) not yet in 004 |
-| 4.3 | AI Models & Provider Registry | P1 | merge → 014 | REQ-MODEL-4 (per-provider request/response adaptation) is new beyond 014's admin-gate focus |
-| 4.10 | Sharing & Permissions | P1 | **new**, consolidate | Currently scattered across 009/012/016; PRD treats it as one cross-cutting policy (global overrides, per-role targets) — worth centralizing into one spec the others reference |
-| 4.5 | RAG & Knowledge Grounding | P1 (pillar) | merge → 005 | Adds explicit chunk-overlap config and dual retrieval-scope (per-chat vs. data-product) as first-class FRs |
-| 4.6 | Data Products | P1 (pillar) | merge → 012, 013 + **new** base CRUD spec | 012/013 are hardening-only (auth gap, DLQ); PRD's full CRUD/versioning/MCP-exposure/bulk-ingestion capability isn't fully specified yet |
-| 4.7 | Personas | P1 (pillar) | merge → 009, 010 | Good coverage already; add REQ-PERSONA-7 (A2A publish) cross-link to spec 011 |
-| 4.8 | Prompts | P1 (pillar) | merge → 016 | Good coverage already |
-| 4.11 | Canvas LMS/LTI & Lessons | P1 (pillar) | merge → 003, 007, 008 | Split across three specs already; PRD's REQ-LTI-6 (multi-environment, no identity collision) confirm covered in 003 |
-| 4.12 | Orchestration | P1 (pillar) | merge → 001 | 001 only covers builder persistence/auth/cycle bugs; PRD's trigger types (API/file-upload/multi-modal, each with auth/rate-limit/file-constraint config) are a gap to fill |
-| 4.13 | Agents & Interop (A2A/MCP) | P1 (pillar) | merge → 011 | 011 covers A2A invocation only; PRD adds *consuming* external MCP servers and an admin MCP monitoring dashboard — both gaps |
-| 4.4 | Tools/Extensions framework | P2 | **new**, cross-ref 004 | The layered gating model (requiresAdmin/isDemo/requiresAdvancedModel/allowedModels) and the tool catalog itself deserve their own spec rather than living inside chat-pipeline |
-| 4.18 | Admin Configuration | P2 | merge → 014, 015 + gap | MCP monitoring dashboard (REQ-ADMIN-3) not covered by either |
-| 4.9 | Multi-Chat (model comparison) | P2 | merge → 006 | 006 only fixed the persistence bug; the base "compare N models side-by-side" capability (REQ-MULTICHAT-1) needs its own FRs |
-| 4.16 | Artifacts | P2 | merge → 004 (extend) | 004 only covers the sandboxing bug; full artifact-panel capability (REQ-ARTIFACT-1) is broader |
-| 4.22 | File Upload & Processing | P2 | merge → 005 | Unified deletion across chat/data-product scopes (REQ-FILE-3) is a gap |
-| 4.17 | PII Redaction | P2 | keep distributed | Already folded into 004 (chat) and 008 (Canvas three-tier); consolidate into its own policy spec only if a third surface needs it |
-| 4.21 | Changelog & Notifications | P3 | merge → 017 + gap | 017 covers changelog crash-guard; real-time WebSocket notifications (REQ-NOTIF-3) is new |
-| 4.20 | Analytics / Executive Dashboard | P3 | merge → 015 | Good coverage already |
-| 4.19 | User Preferences | P3 | **new** | Small: theme + landing-action resolution with self-healing fallback |
-| 4.14 | Image Generation & Vision | P3 | **new** | No existing spec |
-| 4.15 | Voice Chat | P3 | **new** | No existing spec; realtime session/token negotiation is novel enough to need its own FRs |
+| 4.1 | Auth, Sessions & Access Control | P1 | ✅ done — merged → 002, 003 | Added Story 5/6 to 002 (route/admin gating, identity hashing) and extended 003 (LMS identity hashing, impersonation audit) |
+| 4.2 | Conversational Chat (core) | P1 | ✅ done — merged → 004 | Added Stories 6/7/8 (context compression, max-thread-size, feedback capture); REQ-CHAT-7 fully deferred to spec 005 |
+| 4.3 | AI Models & Provider Registry | P1 | ✅ done — merged → 014 | Added Stories 6/7/8 (catalog metadata, provider adaptation, workload-identity auth) |
+| 4.10 | Sharing & Permissions | P1 | ✅ done — **new spec 018** | `specs/018-sharing-permissions/spec.md`; found and documented a real gap (data products have no student-sharing branch) as an Edge Case for 012 to eventually close |
+| 4.5 | RAG & Knowledge Grounding | P1 (pillar) | ✅ done — merged → 005 | Added Stories 5/6/7 (dual retrieval-scope, citations, deletion) + extended chunk/embedding FRs with explicit config |
+| 4.6 | Data Products | P1 (pillar) | ✅ done — merged → 012, 013 + **new spec 019** | `specs/019-data-products-core/spec.md` owns base CRUD/versioning/MCP/rate-limiting/audit; 012/013 updated to cross-reference it instead of re-specifying |
+| 4.7 | Personas | P1 (pillar) | ✅ done — merged → 009, 010 | REQ-PERSONA-7 cross-linked to spec 011; **REQ-PERSONA-2 (start chat from persona) has no home in either spec — flagged as an open gap, see note below** |
+| 4.8 | Prompts | P1 (pillar) | ✅ done — merged → 016 | Added Stories 4/5/6 (base CRUD, favoriting, launch-from-prompt) — 016 previously only had the transfer/sharing bug fixes |
+| 4.11 | Canvas LMS/LTI & Lessons | P1 (pillar) | ✅ done — merged → 003, 007, 008 | Closed 3 small gaps: REQ-LTI-7 error-code routing (003), explicit lesson-exit affordance (007), OAuth token health-check (008) |
+| 4.12 | Orchestration | P1 (pillar) | ✅ done — merged → 001 | Added Story 5 (typed triggers: API/file-upload/multi-modal + config); REQ-ORCH-4 (execution/streaming) explicitly scoped out as an Assumption — that's the external Logic Apps engine, not in this repo |
+| 4.13 | Agents & Interop (A2A/MCP) | P1 (pillar) | ✅ done — merged → 011 | Added Stories 5/6 (consuming external MCP servers, admin MCP monitoring dashboard); REQ-AGENT-3 cross-referenced to spec 019 |
+| 4.4 | Tools/Extensions framework | P2 | ✅ done — **new spec 020** | `specs/020-tools-extensions-framework/spec.md`; owns the 4-layer gating model + catalog list, cross-references 004/007/008/011/012/019/014 for per-tool mechanics rather than duplicating |
+| 4.18 | Admin Configuration | P2 | ✅ done — merged → 014, 015 | REQ-ADMIN-3 (MCP monitoring) cross-referenced to spec 011's Story 6; REQ-ADMIN-2 (cache fallback) was the one genuine gap, closed with a new FR in 014 |
+| 4.9 | Multi-Chat (model comparison) | P2 | ✅ done — merged → 006 | Added Story 4 (P1) for the base parallel-dispatch/side-by-side capability, cross-referencing 014's model allow-list |
+| 4.16 | Artifacts | P2 | ✅ done — merged → 004 | Added Story 9 for the base artifact-panel capability, deferring to the existing sandboxing story rather than restating it |
+| 4.22 | File Upload & Processing | P2 | ✅ done — merged → 005 | Closed REQ-FILE-1/2 gaps (upload validation, actionable corrupt-file errors); REQ-FILE-3 (unified deletion) was already fully covered |
+| 4.17 | PII Redaction | P2 | kept distributed (no action) | Already folded into 004 (chat) and 008 (Canvas three-tier); no third surface has emerged that would justify consolidating |
+| 4.21 | Changelog & Notifications | P3 | ✅ done — merged → 017 | Added Story 5 for REQ-NOTIF-3 (WebSocket real-time notifications), with an explicit Assumption that the transport must be Azure-native, not the AWS endpoint SSD_Document.md flagged as debt |
+| 4.20 | Analytics / Executive Dashboard | P3 | ✅ done — merged → 015 | Confirmed already fully covered; cross-reference only, no new content |
+| 4.19 | User Preferences | P3 | ✅ done — **new spec 021** | `specs/021-user-preferences/spec.md`; 2 stories, self-healing landing-action fallback specified concretely |
+| 4.14 | Image Generation & Vision | P3 | ✅ done — **new spec 022** | `specs/022-image-generation-vision/spec.md`; cross-references 004's existing size-limit FR and 014's vision-capability flag rather than duplicating |
+| 4.15 | Voice Chat | P3 | ✅ done — **new spec 023** | `specs/023-voice-chat/spec.md`; 3 stories, one (connection-drop renegotiation) explicitly flagged as inferred beyond the PRD's single REQ-VOICE-1 statement |
 
 ## Constitution note
 
-The ratified constitution (`.specify/memory/constitution.md` v1.0.0) draws its principles from SSD_Document.md §5's debt findings. Its principles still hold for a PRD-driven build (authorization-before-mutation, fail-loud, one-implementation-per-concern, etc.), but it currently cites only SSD_Document.md as source material. A minor amendment (PATCH or MINOR bump) should add PRODUCT_REQUIREMENTS_DOCUMENT.md as the primary spec source and fold in the §7 NFRs that aren't yet principles in their own right — most notably REQ-NFR-SEC-1/2 (server-side-only auth, no secrets to client) and REQ-NFR-REL-1 (optional dependencies fail open without breaking core chat), which are stated once in the PRD but should apply project-wide, not per-spec.
+✅ Done — the constitution was amended to v1.1.0: it now cites `docs/PRODUCT_REQUIREMENTS_DOCUMENT.md` as primary source alongside SSD_Document.md, Principle II was broadened from mutation-only to every server-side access decision (REQ-NFR-SEC-1), and Principle III now cites REQ-NFR-REL-1 as its fail-open carve-out example.
+
+## Closed gap: REQ-PERSONA-2
+
+✅ Done — the persona merge pass found a PRD requirement with no natural home in either persona spec: **REQ-PERSONA-2** ("start a chat directly from a persona, applying its model, instructions, tools, and data products"). Resolved with a follow-up merge into spec 004 as User Story 10 (FR-036–FR-039, SC-015/016), cross-referencing spec 009 for the `PersonaModel` schema rather than redefining it.
 
 ## Suggested order of attack
 
-1. Foundational P1s first, since every other spec depends on them: **Auth & Access Control** (merge 002/003), **Sharing & Permissions** (new, consolidate), **AI Model Registry** (merge 014).
-2. The five PRD pillars (§1.1) next, in the order a user would encounter them: Chat Core → RAG → Personas/Prompts → LMS/Lessons → Orchestration/Agents.
-3. P2 gap-fills (Tools/Extensions framework, Admin MCP monitoring, Multi-Chat base capability, Artifacts, unified file deletion).
-4. P3 net-new capabilities (Image Gen, Voice, User Preferences) and remaining polish (Analytics, Notifications).
+1. ✅ **Done** — Foundational P1s: **Auth & Access Control** (merged → 002/003), **Sharing & Permissions** (new spec 018), **AI Model Registry** (merged → 014).
+2. ✅ **Done** — the five PRD pillars (§1.1): Chat Core → RAG → Personas/Prompts → LMS/Lessons → Orchestration/Agents.
+3. ✅ **Done** — P2 gap-fills (Tools/Extensions framework, Admin MCP monitoring, Multi-Chat base capability, Artifacts, unified file deletion).
+4. ✅ **Done** — P3 net-new capabilities (Image Gen, Voice, User Preferences) and remaining polish (Analytics, Notifications).
+5. ✅ **Done** — Closed the one open gap found along the way: REQ-PERSONA-2, merged into spec 004 (see above).
 
-No specs have been drafted yet against this plan — this is the mapping only, for review before committing to writing any of the new/merged spec files.
+**All PRD capability areas are now represented across 23 specs**, with a clean consistency pass behind them (verified: no FR/SC numbering gaps or duplicates in any of the 23 files, no leftover template placeholders, all required template sections present, and a sampled set of cross-spec FR citations all resolve to real, matching content). This is a solid base to move into `/speckit-plan` for whichever spec you want to implement first.
+
+**All 20 active rows complete as of 2026-07-21** (every row except 4.17, which is intentionally kept distributed with no action needed). Four new specs created beyond the original 17: **018** (Sharing & Permissions), **019** (Data Products Core), **020** (Tools/Extensions Framework), **021** (User Preferences), **022** (Image Generation & Vision), **023** (Voice Chat) — six new specs total, bringing the repo to 23 specs. One open follow-up remains: **REQ-PERSONA-2** (see above) needs its own small merge into spec 004, cross-referencing spec 009.

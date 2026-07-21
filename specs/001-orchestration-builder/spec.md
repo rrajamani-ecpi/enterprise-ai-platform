@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: Derived from SSD_Document.md §3.6 (Orchestration & Agents) and §5 (Architectural Debt) — reframed from "as-is" discovery findings into target requirements. Source facts: the workflow-builder UI's "create" flow never attaches drawn nodes/connections to the create call (canvas ref not wired up, so anything drawn is silently discarded), the "view existing orchestration" page renders an empty fragment, `EnsureOrchestrationOperation` falls through to an "OK" response for callers who are neither owner nor admin, and no cycle detection exists at any layer — despite the execution engine underneath being fully implemented and unit-tested.
+**Input**: Derived from SSD_Document.md §3.6 (Orchestration & Agents) and §5 (Architectural Debt) — reframed from "as-is" discovery findings into target requirements. Source facts: the workflow-builder UI's "create" flow never attaches drawn nodes/connections to the create call (canvas ref not wired up, so anything drawn is silently discarded), the "view existing orchestration" page renders an empty fragment, `EnsureOrchestrationOperation` falls through to an "OK" response for callers who are neither owner nor admin, and no cycle detection exists at any layer — despite the execution engine underneath being fully implemented and unit-tested. Extended per `docs/PRODUCT_REQUIREMENTS_DOCUMENT.md` §4.12 (REQ-ORCH-1..5) and `docs/prd-decomposition-plan.md`, which route this feature's forward-looking gap — typed workflow triggers (API/file-upload/multi-modal) with per-trigger configuration — here as an addition alongside the original bug-driven scope.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -69,12 +69,32 @@ A direct API caller submits a graph where a trigger node is missing its required
 1. **Given** a graph containing a trigger node with no `triggerType`, **When** submitted via direct API call, **Then** the system rejects the save with a field-specific error.
 2. **Given** a graph where every node's type-specific required fields are present, **When** submitted via direct API call, **Then** the save succeeds.
 
+---
+
+### User Story 5 - Configure typed workflow triggers with per-trigger settings (Priority: P2)
+
+A workflow builder adds a trigger node to a graph and selects its trigger type — API, file-upload, or multi-modal — then configures the settings specific to that type: API key, allowed origins, and rate limit for an API trigger; accepted file types, max size, max count, virus-scan requirement, and retention for a file-upload trigger; processing mode (individual/batch/combined) and context-passing mode for a multi-modal trigger.
+
+**Why this priority**: PRD §4.12 (REQ-ORCH-2) specifies these trigger types and their configuration surface as a capability distinct from the bare `triggerType` presence check in Story 4 — today nothing in the schema or validation captures type-specific configuration at all, so this is a genuine gap rather than a bug fix. It is ranked P2 because it builds on the save/reload and authorization guarantees of Stories 1–2, and because its config values (auth, rate limits, file constraints) are themselves security/correctness-relevant, similar in urgency to cycle detection.
+
+**Independent Test**: Create a trigger node of each type (API, file-upload, multi-modal), populate its type-specific configuration, save, reload, and confirm the configuration round-trips unchanged; separately, submit a trigger node missing a type-specific required config field via direct API call and confirm the save is rejected.
+
+**Acceptance Scenarios**:
+
+1. **Given** a trigger node of type `api`, **When** the user configures an API key, allowed origins, and a rate limit and saves, **Then** the saved record contains that configuration and it renders identically on reload.
+2. **Given** a trigger node of type `file-upload`, **When** the user configures accepted file types, max size, max count, a virus-scan requirement, and a retention period and saves, **Then** the saved record contains that configuration and it renders identically on reload.
+3. **Given** a trigger node of type `multi-modal`, **When** the user configures a processing mode (individual/batch/combined) and a context-passing mode and saves, **Then** the saved record contains that configuration and it renders identically on reload.
+4. **Given** a trigger node whose type-specific required configuration field is missing (e.g., an API trigger with no rate limit, a file-upload trigger with no accepted file types), **When** submitted via direct API call, **Then** the system rejects the save with a field-specific error, consistent with the per-node-type validation in Story 4.
+
 ### Edge Cases
 
 - What happens when a save request omits a terminal node entirely? (Existing graph-shape rule — at least one trigger and one terminal node, single connected component — must continue to be enforced alongside the new checks in this spec, not replaced by them.)
 - How does the system handle a save request for an orchestration that was deleted by another caller between page load and save?
 - What happens when a cycle spans more than two nodes, or when multiple disjoint cycles exist in the same graph?
 - How does the view/edit page behave for an orchestration that exists but the current caller is not authorized to see (should not distinguish "not found" from "forbidden," consistent with this codebase's existing ambiguous-403 convention elsewhere)?
+- What happens when a file-upload trigger's configured max size/count conflicts with a platform-wide upload limit enforced elsewhere?
+- How does the system handle a trigger's type being changed on an existing node (e.g., API → file-upload) — is the prior type's configuration discarded or preserved for later restore?
+- What happens when a caller without access to the feature flag attempts to reach the builder directly by URL?
 
 ## Requirements *(mandatory)*
 
@@ -88,12 +108,19 @@ A direct API caller submits a graph where a trigger node is missing its required
 - **FR-006**: The system MUST continue to enforce the existing graph-shape rule (≥1 trigger node, ≥1 terminal node, single connected component) unchanged by the new checks in this spec.
 - **FR-007**: The system MUST validate per-node-type required fields (e.g., a trigger node's `triggerType`) server-side on every save, regardless of client-side validation state.
 - **FR-008**: Rejected saves (authorization, cycle, or field validation failures) MUST leave the previously-saved graph state unchanged (no partial writes).
+- **FR-009**: A trigger node MUST declare one of the types `api`, `file-upload`, or `multi-modal`, and MUST carry a type-specific configuration object that is persisted and reloaded with the node.
+- **FR-010**: An `api` trigger's configuration MUST support an API key, a list of allowed origins, and a rate limit.
+- **FR-011**: A `file-upload` trigger's configuration MUST support accepted file types, a max file size, a max file count, a virus-scan requirement, and a retention period.
+- **FR-012**: A `multi-modal` trigger's configuration MUST support a processing mode (`individual` | `batch` | `combined`) and a context-passing mode.
+- **FR-013**: The system MUST validate trigger-type-specific required configuration fields server-side at save time, rejecting saves with missing/invalid fields with a field-specific error, using the same server-side enforcement point as FR-007.
+- **FR-014**: The system MUST gate access to the orchestration builder (create/edit/view) behind a feature flag; when the flag is disabled for a caller, the builder MUST be inaccessible regardless of the caller's authorization role.
 
 ### Key Entities *(include if feature involves data)*
 
 - **OrchestrationModel**: an owned, versioned workflow graph — `name`/`description`, `nodes`, `connections`, `entryNode`, `terminalNodes`. Version increments on graph change.
-- **OrchestrationNode**: typed graph node (`trigger` | `persona` | `terminal`); trigger nodes carry a required `triggerType`.
+- **OrchestrationNode**: typed graph node (`trigger` | `persona` | `terminal`); trigger nodes carry a required `triggerType` (`api` | `file-upload` | `multi-modal`) and a type-specific **TriggerConfiguration**.
 - **OrchestrationConnection**: a directed edge between two nodes; may carry a `condition` (modeled in the schema; branching/fan-out execution semantics are out of scope for this spec).
+- **TriggerConfiguration**: type-specific settings attached to a trigger node — `api` (API key, allowed origins, rate limit), `file-upload` (accepted file types, max size, max count, virus-scan requirement, retention), `multi-modal` (processing mode, context-passing mode).
 
 ## Success Criteria *(mandatory)*
 
@@ -103,6 +130,9 @@ A direct API caller submits a graph where a trigger node is missing its required
 - **SC-002**: 0 non-owner/non-admin/non-collaborator mutation requests succeed against the direct API in the authorization test suite.
 - **SC-003**: 100% of graphs containing a cycle are rejected at save time across a test corpus of single-cycle, multi-cycle, and no-cycle graphs, with 0 false-positive rejections on valid acyclic graphs.
 - **SC-004**: 100% of direct-API saves with a missing node-type-required field are rejected server-side, independent of client-side state.
+- **SC-005**: 100% of trigger configurations (API, file-upload, multi-modal) saved through the builder render identical configuration on reload, across a test corpus covering all three types.
+- **SC-006**: 100% of direct-API saves with a missing/invalid trigger-type-specific required configuration field are rejected server-side, across all three trigger types.
+- **SC-007**: 100% of builder access attempts are blocked when the feature flag is disabled, verified across owner, collaborator, and admin roles.
 
 ## Assumptions
 
@@ -110,3 +140,6 @@ A direct API caller submits a graph where a trigger node is missing its required
 - Branching/fan-out execution (using the schema's `condition` field on connections) remains out of scope — this spec only requires that such graphs can be saved and validated, not that they execute with branching.
 - Production execution via external Azure Logic Apps is unaffected by this spec; it consumes whatever valid graph shape this spec guarantees.
 - "Collaborator with edit rights" reuses the sharing-permission model already established for personas/prompts elsewhere in the codebase, rather than introducing a new one.
+- PRD §4.12/REQ-ORCH-4 (node-by-node execution, streaming intermediate results, and persistence of execution state/per-node results/message history/snapshots) is explicitly **out of scope** for this spec: per SSD_Document.md §3.6/§5, production execution is delegated to external Azure Logic Apps whose step-engine is not present in this repository, and the in-repo execution engine used for local dev is retained as-is (see first Assumption above) rather than re-specified here. This spec covers only the graph shape and trigger configuration that such execution consumes.
+- The mapping of PRD's flat trigger-configuration field list to individual trigger types (API keys/allowed origins/rate limits → `api`; file types/sizes/counts/virus-scan/retention → `file-upload`; processing mode/context-passing mode → `multi-modal`) is inferred from context, since PRD §4.12 lists these fields together without an explicit per-type mapping.
+- The feature flag mechanism for gating the builder (FR-014) reuses the existing feature-flag system already used elsewhere in the codebase (e.g., for Persona Studio), rather than introducing a new one.
