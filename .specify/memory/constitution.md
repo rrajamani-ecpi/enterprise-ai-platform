@@ -1,9 +1,24 @@
 <!--
 Sync Impact Report
-Version change: 1.1.0 → 1.2.0 (MINOR — new Technology Stack & Platform Alignment section added)
+Version change: 1.2.0 → 1.2.1 (PATCH — Technology Stack currency refresh; no principle changes)
 Modified principles: none (existing principles unchanged)
-Added sections: Technology Stack & Platform Alignment
+Modified sections: Technology Stack & Platform Alignment (Agent & orchestration layer + Responsible AI
+  bullets) — refreshed against live Microsoft Learn sources on 2026-07-21:
+    - "Azure AI Foundry" / "Azure AI Foundry Agent Service" renamed to "Microsoft Foundry" /
+      "Microsoft Foundry Agent Service" (Microsoft rebrand; canonical URL now azure/foundry/...).
+    - Added the Responses API as the single agent entry point and the prompt-agent vs hosted-agent
+      distinction; clarified hosted agents ship as container/zip with a managed endpoint and a
+      dedicated Entra identity.
+    - Noted the managed A2A protocol endpoint and memory/web-search tools are still in preview, and
+      that Foundry Toolbox (curate tools once -> single MCP endpoint) is the tool-curation mechanism.
+    - Noted Microsoft Agent Framework is confirmed as the unified successor to Semantic Kernel +
+      AutoGen but its package versions remain unpinned pending GA verification at first /speckit-plan.
+Added sections: none
 Removed sections: none
+Verified current (no change needed): .NET 10 is the current LTS (GA 2025-11-11, supported to
+  2028-11-14) — target it, not .NET 8 (EOL 2026-11-10); Blazor Web App Interactive Server remains
+  the recommended default (add Azure SignalR Service to scale circuits); Agent Service supports
+  bring-your-own Cosmos DB / Azure AI Search / Storage, reinforcing the data-store choices below.
 Templates requiring updates:
   - .specify/templates/plan-template.md ⚠ pending — each feature's "Technical Context" in plan.md should
     default to this section's stack rather than re-deciding it; no template edit needed, but authors of
@@ -11,10 +26,11 @@ Templates requiring updates:
   - .specify/templates/spec-template.md ✅ no changes needed — specs remain tech-agnostic by design
   - .specify/templates/tasks-template.md ✅ no changes needed — unaffected by this amendment
 Follow-up TODOs:
-  - This section's specific product names/versions reflect knowledge current to ~January 2026 and were
-    NOT re-verified against a live web search at amendment time (deep-research was started and then
-    stopped by the user, who asked to proceed from existing knowledge instead). Re-validate against
-    Microsoft Learn / Azure Architecture Center before the first /speckit-plan locks in package versions.
+  - Pin exact package versions (Microsoft Agent Framework, Azure SDKs) and confirm GA vs preview
+    status of Agent Framework, the managed A2A endpoint, and Foundry memory/web-search tools at the
+    first /speckit-plan that depends on them.
+  - Downstream cross-references (not blocking this amendment): spec 011 should note the managed A2A
+    endpoint is preview; spec 020 may reference Foundry Toolbox as its MCP tool-curation mechanism.
 -->
 
 # Enterprise AI Platform Constitution
@@ -113,12 +129,23 @@ rule) — consistency here is what makes as-is discovery facts and to-be specs c
 - **Agent & orchestration layer**: Microsoft Agent Framework (the unified successor to Semantic
   Kernel and AutoGen) is the in-process library for building personas/agents, tool/function
   calling, and multi-agent orchestration (replacing this spec set's `OrchestrationModel` graph
-  executor and the reference implementation's bespoke `SimplifiedPersonaExecutor`). Azure AI
-  Foundry is the unified control plane for model catalog, deployment, and evaluation; **Azure AI
-  Foundry Agent Service** is the managed hosting/runtime for agent threads, state, and tool
-  invocation; **Foundry Hosted Agents** is the deployment target for custom agent code built on
-  Microsoft Agent Framework, replacing the reference implementation's external-Logic-Apps
-  execution delegation (SSD_Document.md §3.6) with a first-party managed runtime.
+  executor and the reference implementation's bespoke `SimplifiedPersonaExecutor`). **Microsoft
+  Foundry** (formerly "Azure AI Foundry") is the unified control plane for model catalog,
+  deployment, and evaluation; **Microsoft Foundry Agent Service** is the managed runtime for
+  agents, exposing a single **Responses API** entry point plus platform tools (file search, code
+  interpreter, memory, web search, MCP servers). It offers two agent shapes: **prompt agents**
+  (config-only — instructions/model/tools — fully managed, no code to host) and **hosted agents**
+  (custom agent code built on Microsoft Agent Framework, shipped as a container image or source
+  zip, run by Foundry with a managed endpoint, a dedicated Microsoft Entra identity, and
+  session-level state). Hosted agents are the deployment target for this platform's custom agent
+  code, replacing the reference implementation's external-Logic-Apps execution delegation
+  (SSD_Document.md §3.6) with a first-party managed runtime. The managed **A2A protocol** endpoint
+  and the **memory** / **web-search** tools are still in preview at the time of writing — any spec
+  depending on them (e.g., spec 011) MUST treat them as preview, not GA. Foundry **Toolbox** (define
+  a curated tool set once and expose it through a single MCP-compatible endpoint) is the preferred
+  tool-curation mechanism for the tools/extensions framework (spec 020). Microsoft Agent Framework
+  package versions remain unpinned here pending GA verification at the first /speckit-plan that uses
+  them.
 - **Data & storage** (Azure-only, per Principle I): **Azure AI Search** for RAG retrieval (hybrid
   vector + keyword, replacing the reference implementation's Cosmos-native RRF hybrid search) —
   Microsoft's purpose-built retrieval service is preferred over rolling hybrid search inside a
@@ -140,8 +167,10 @@ rule) — consistency here is what makes as-is discovery facts and to-be specs c
   Excellence (structured telemetry per Principle IV's "one implementation" logging discipline), and
   Performance Efficiency (streaming-first responses, hybrid retrieval top-K tuning).
 - **Responsible AI**: every model-facing boundary MUST apply Azure AI Content Safety (prompt
-  shields, groundedness detection, content filtering) in addition to this spec set's existing PII
-  redaction (see Security & Compliance Constraints below), and every deployed model/agent MUST have
+  shields, groundedness detection, content filtering — surfaced natively in Foundry Agent Service
+  as **guardrails**, including cross-prompt-injection/XPIA protection) in addition to this spec
+  set's existing PII redaction (see Security & Compliance Constraints below), and every deployed
+  model/agent MUST have
   a documented evaluation pass (Foundry's built-in risk-and-safety evaluators or equivalent) before
   production use. This operationalizes Microsoft's six Responsible AI principles (Fairness,
   Reliability & Safety, Privacy & Security, Inclusiveness, Transparency, Accountability) — in
@@ -192,4 +221,4 @@ and (3) a Sync Impact Report prepended to this file describing the change. Any p
 to violate a principle above must either be brought into compliance or carry an explicit, justified
 exception recorded in that plan's Complexity Tracking section.
 
-**Version**: 1.2.0 | **Ratified**: 2026-07-20 | **Last Amended**: 2026-07-21
+**Version**: 1.2.1 | **Ratified**: 2026-07-20 | **Last Amended**: 2026-07-21
