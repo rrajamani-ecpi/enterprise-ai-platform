@@ -5,6 +5,7 @@ using EnterpriseAIPlatform.Infrastructure.Authentication;
 using EnterpriseAIPlatform.Infrastructure.DependencyInjection;
 using EnterpriseAIPlatform.Infrastructure.Telemetry;
 using EnterpriseAIPlatform.Web.Components;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Identity.Web;
@@ -12,10 +13,40 @@ using Microsoft.Identity.Web.UI;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- Authentication: Microsoft Entra ID (OIDC) via Microsoft.Identity.Web (spec 002 FR-010) ---
-builder.Services
-    .AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"));
+var authenticationSection = builder.Configuration.GetSection(PlatformAuthenticationOptions.SectionName);
+var authenticationOptions = authenticationSection.Get<PlatformAuthenticationOptions>() ?? new();
+
+if (authenticationOptions.Mode == PlatformAuthenticationMode.Development && !builder.Environment.IsDevelopment())
+{
+    throw new InvalidOperationException(
+        "Development authentication is enabled outside the Development environment. " +
+        "Set PlatformAuthentication:Mode to Entra before deploying.");
+}
+
+builder.Services.AddOptions<PlatformAuthenticationOptions>()
+    .Bind(authenticationSection)
+    .Validate(
+        options => options.Mode != PlatformAuthenticationMode.Development ||
+                   (!string.IsNullOrWhiteSpace(options.DevelopmentUser.Name) &&
+                    !string.IsNullOrWhiteSpace(options.DevelopmentUser.Email)),
+        "PlatformAuthentication:DevelopmentUser:Name and Email are required in Development mode.")
+    .ValidateOnStart();
+
+// Entra in deployed environments; explicitly simulated identity in local development.
+if (authenticationOptions.Mode == PlatformAuthenticationMode.Development)
+{
+    builder.Services
+        .AddAuthentication(DevelopmentAuthenticationHandler.SchemeName)
+        .AddScheme<AuthenticationSchemeOptions, DevelopmentAuthenticationHandler>(
+            DevelopmentAuthenticationHandler.SchemeName,
+            _ => { });
+}
+else
+{
+    builder.Services
+        .AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
+        .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"));
+}
 
 builder.Services.AddControllersWithViews().AddMicrosoftIdentityUI();
 

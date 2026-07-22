@@ -1,4 +1,17 @@
-﻿@inherits LayoutComponentBase
+﻿@using EnterpriseAIPlatform.Infrastructure.Authentication
+@using Microsoft.Extensions.Options
+@inherits LayoutComponentBase
+@inject IWebHostEnvironment HostEnvironment
+@inject IOptions<PlatformAuthenticationOptions> AuthenticationOptions
+
+@if (HostEnvironment.IsDevelopment() &&
+     AuthenticationOptions.Value.Mode == PlatformAuthenticationMode.Development)
+{
+    <div class="development-auth-banner" role="alert">
+        Development authentication is active — signed in as
+        <strong>@AuthenticationOptions.Value.DevelopmentUser.Email</strong>. Do not use this mode in a deployed environment.
+    </div>
+}
 
 @Body
 

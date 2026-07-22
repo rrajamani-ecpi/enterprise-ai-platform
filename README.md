@@ -37,6 +37,23 @@ dotnet test
 dotnet run --project src/EnterpriseAIPlatform.Web
 ```
 
+Local runs use the development-only authentication mode configured in
+`appsettings.Development.json`. Run `dotnet run --project src/EnterpriseAIPlatform.Web --launch-profile https`
+and open `https://localhost:7231`; the app signs in as
+`developer@localhost` without an Entra app registration. A yellow banner remains visible while
+the simulated identity is active. You can change its canonical role flags under
+`PlatformAuthentication:DevelopmentUser` to exercise server-side authorization scenarios.
+
+The mode is guarded twice: configuration defaults to `Entra` outside Development, and startup
+fails if `PlatformAuthentication:Mode=Development` is set in any non-Development environment.
+To exercise real Entra authentication locally, override the mode:
+
+```bash
+PlatformAuthentication__Mode=Entra dotnet run --project src/EnterpriseAIPlatform.Web
+```
+
+For repeatable local Entra app-registration provisioning and local client-secret setup, see [`infra/identity/README.md`](./infra/identity/README.md).
+
 ### Configuration (no secrets in source)
 
 Set these before running against a real tenant (use user-secrets or environment variables):
