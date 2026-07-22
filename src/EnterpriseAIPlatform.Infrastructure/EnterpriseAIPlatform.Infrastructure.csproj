@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\EnterpriseAIPlatform.Application\EnterpriseAIPlatform.Application.csproj" />
+    <ProjectReference Include="..\EnterpriseAIPlatform.Domain\EnterpriseAIPlatform.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Needed to implement IClaimsTransformation and consume IHttpContextAccessor from a class library. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="*" />
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="*" />
+    <PackageReference Include="Microsoft.Azure.Cosmos" Version="*" />
+    <PackageReference Include="Microsoft.Identity.Web" Version="*" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Cosmos SDK 3.x uses its bundled Newtonsoft serializer internally; we don't reference it directly. -->
+    <AzureCosmosDisableNewtonsoftJsonCheck>true</AzureCosmosDisableNewtonsoftJsonCheck>
+  </PropertyGroup>
+
+</Project>

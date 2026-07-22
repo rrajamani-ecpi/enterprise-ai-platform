@@ -1,0 +1,15 @@
+<Project>
+  <!-- Inherit the repo-root build props, then relax one thing for TEST projects only. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <!--
+      Test-only transitive vulnerability: Microsoft.NET.Test.Sdk pulls
+      System.Security.Cryptography.Xml 10.0.7, flagged by NuGet audit (NU1903).
+      It is test tooling and never ships to production, and no patched runtime
+      package is published yet. Keep the audit warnings VISIBLE but non-fatal here
+      only; src/ projects remain strict (audit vulnerabilities fail their build).
+    -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+  </PropertyGroup>
+</Project>

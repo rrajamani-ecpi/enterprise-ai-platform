@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EnterpriseAIPlatform.Application/EnterpriseAIPlatform.Application.csproj" />
+    <Project Path="src/EnterpriseAIPlatform.Domain/EnterpriseAIPlatform.Domain.csproj" />
+    <Project Path="src/EnterpriseAIPlatform.Infrastructure/EnterpriseAIPlatform.Infrastructure.csproj" />
+    <Project Path="src/EnterpriseAIPlatform.Web/EnterpriseAIPlatform.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EnterpriseAIPlatform.ArchitectureTests/EnterpriseAIPlatform.ArchitectureTests.csproj" />
+    <Project Path="tests/EnterpriseAIPlatform.IntegrationTests/EnterpriseAIPlatform.IntegrationTests.csproj" />
+    <Project Path="tests/EnterpriseAIPlatform.UnitTests/EnterpriseAIPlatform.UnitTests.csproj" />
+  </Folder>
+</Solution>

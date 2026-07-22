@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\EnterpriseAIPlatform.Infrastructure\EnterpriseAIPlatform.Infrastructure.csproj" />
+    <ProjectReference Include="..\EnterpriseAIPlatform.Application\EnterpriseAIPlatform.Application.csproj" />
+    <ProjectReference Include="..\EnterpriseAIPlatform.Domain\EnterpriseAIPlatform.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Identity.Web" Version="*" />
+    <PackageReference Include="Microsoft.Identity.Web.UI" Version="*" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+
+</Project>
