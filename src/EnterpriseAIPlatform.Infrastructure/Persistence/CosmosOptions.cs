@@ -10,4 +10,7 @@ public sealed class CosmosOptions
     public string DatabaseName { get; init; } = "eap";
 
     public string UserContainerName { get; init; } = "users";
+
+    /// <summary>Holds <c>ChatThreadModel</c>/<c>ChatMessageModel</c> documents, discriminated by <c>DocType</c> (spec 004).</summary>
+    public string ChatContainerName { get; init; } = "chat";
 }
