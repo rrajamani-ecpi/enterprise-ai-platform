@@ -1,2 +1,21 @@
 # Claude Code local settings (personal permissions/session state, not for sharing)
 .claude/settings.local.json
+
+# .NET build output
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+
+# .NET user/IDE files
+*.user
+*.suo
+.vs/
+.idea/
+
+# Test results
+[Tt]est[Rr]esults/
+*.trx
+
+# Local secrets / environment
+appsettings.*.local.json
+*.env
