@@ -19,6 +19,7 @@
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="*" />
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="*" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="*" />
     <PackageReference Include="Microsoft.Identity.Web" Version="*" />
   </ItemGroup>
 

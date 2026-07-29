@@ -6,6 +6,7 @@ using EnterpriseAIPlatform.Infrastructure.DependencyInjection;
 using EnterpriseAIPlatform.Infrastructure.Telemetry;
 using EnterpriseAIPlatform.Web.Components;
 using EnterpriseAIPlatform.Web.Endpoints;
+using EnterpriseAIPlatform.Web.Endpoints.Chat;
 using EnterpriseAIPlatform.Web.Endpoints.ModelAccess;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -63,6 +64,9 @@ builder.Services.AddPlatformTelemetry(builder.Configuration);
 // --- Spec 014: model registry, access gating, config management (Layer 1, depends on 002) ---
 builder.Services.AddModelAccessInfrastructure(builder.Configuration);
 
+// --- Spec 004: chat message pipeline (Layer 3, depends on 002 + 014) ---
+builder.Services.AddChatInfrastructure(builder.Configuration);
+
 // --- Authorization: deny-by-default fallback + server-side admin gate (spec 002 FR-011/012/013) ---
 builder.Services.AddAuthorizationBuilder()
     .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
@@ -113,6 +117,9 @@ app.MapGet("/api/admin/ping", () => Results.Ok(new { pong = true }))
 // Spec 014: model registry, access gating, config management, and the preferences 401 fix.
 app.MapModelAccessEndpoints();
 app.MapUserPreferencesEndpoints();
+
+// Spec 004: chat message pipeline (send -> stream -> persist).
+app.MapChatEndpoints();
 
 app.MapControllers();
 
