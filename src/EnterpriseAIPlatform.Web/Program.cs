@@ -5,6 +5,8 @@ using EnterpriseAIPlatform.Infrastructure.Authentication;
 using EnterpriseAIPlatform.Infrastructure.DependencyInjection;
 using EnterpriseAIPlatform.Infrastructure.Telemetry;
 using EnterpriseAIPlatform.Web.Components;
+using EnterpriseAIPlatform.Web.Endpoints;
+using EnterpriseAIPlatform.Web.Endpoints.ModelAccess;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
@@ -50,9 +52,16 @@ else
 
 builder.Services.AddControllersWithViews().AddMicrosoftIdentityUI();
 
+// Enums (e.g. ModelAccessTier) serialize/bind as their string names, not raw ints, on JSON API endpoints.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
+
 // --- Canonical session/role/identity services + telemetry ---
 builder.Services.AddPlatformInfrastructure(builder.Configuration);
 builder.Services.AddPlatformTelemetry(builder.Configuration);
+
+// --- Spec 014: model registry, access gating, config management (Layer 1, depends on 002) ---
+builder.Services.AddModelAccessInfrastructure(builder.Configuration);
 
 // --- Authorization: deny-by-default fallback + server-side admin gate (spec 002 FR-011/012/013) ---
 builder.Services.AddAuthorizationBuilder()
@@ -72,7 +81,12 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+// Scoped to non-API requests: re-executing an API error response (403/404/etc.) against the
+// Blazor "/not-found" page — which only supports GET/HEAD/POST — corrupts PUT/DELETE admin
+// responses into a spurious 405. Browser page navigation still gets the friendly not-found page.
+app.UseWhen(
+    context => !context.Request.Path.StartsWithSegments("/api"),
+    branch => branch.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
@@ -95,6 +109,10 @@ app.MapGet("/api/whoami", (ICurrentUserAccessor currentUser) =>
 // Admin-only endpoint: server-side gate, independent of any UI state (FR-012/013).
 app.MapGet("/api/admin/ping", () => Results.Ok(new { pong = true }))
     .RequireAuthorization(PolicyNames.RequireAdmin);
+
+// Spec 014: model registry, access gating, config management, and the preferences 401 fix.
+app.MapModelAccessEndpoints();
+app.MapUserPreferencesEndpoints();
 
 app.MapControllers();
 

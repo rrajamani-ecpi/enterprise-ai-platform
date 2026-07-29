@@ -14,6 +14,11 @@
     <PackageReference Include="Azure.Identity" Version="*" />
     <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="*" />
     <PackageReference Include="Microsoft.Azure.Cosmos" Version="*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="*">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="*" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="*" />
     <PackageReference Include="Microsoft.Identity.Web" Version="*" />
   </ItemGroup>
 
