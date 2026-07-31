@@ -4,7 +4,7 @@ Enterprise AI Platform — a spec-driven (GitHub spec-kit) build. Specifications
 
 ## Release 1 — Authenticated Enterprise Chat (in progress)
 
-The first increment is the **walking skeleton** (spec 002): the canonical server-side session/role/authorization layer every later feature builds on. Spec 014 (Layer 1) adds the model registry, access-gating, and config-management service. Spec 004 (Layer 3) adds the first user-facing capability — the chat send → stream → persist pipeline, hardened with PII redaction, a Content Safety guardrail, and a reliability wrapper. Spec 006 (Layer 4) adds multi-chat: a persisted, multi-quadrant layout that dispatches one message to N models in parallel for side-by-side comparison. All R1 scope only (see Status sections below), per [`docs/Release1-MVP Plan.md`](./docs/Release1-MVP%20Plan.md).
+The first increment is the **walking skeleton** (spec 002): the canonical server-side session/role/authorization layer every later feature builds on. Spec 014 (Layer 1) adds the model registry, access-gating, and config-management service. Spec 017 (Layer 1) adds changelog/version-alert, sanitized health probes, and a feedback proxy. Spec 004 (Layer 3) adds the first user-facing capability — the chat send → stream → persist pipeline, hardened with PII redaction, a Content Safety guardrail, and a reliability wrapper. Spec 006 (Layer 4) adds multi-chat: a persisted, multi-quadrant layout that dispatches one message to N models in parallel for side-by-side comparison. All R1 scope only (see Status sections below), per [`docs/Release1-MVP Plan.md`](./docs/Release1-MVP%20Plan.md).
 
 ## Tech stack
 
@@ -20,14 +20,14 @@ The first increment is the **walking skeleton** (spec 002): the canonical server
 
 ```text
 src/
-  EnterpriseAIPlatform.Domain           # role flags, identity value objects; ModelAccess/ entities (014); Chat/ entities (004/006)
-  EnterpriseAIPlatform.Application       # contracts + ServerActionResponse, RoleDowngrade, PolicyNames; ModelAccess/ (014); Chat/ (pipeline/redaction/safety/completion-client contracts (004), multi-chat session store contract + quadrant rules (006))
-  EnterpriseAIPlatform.Infrastructure    # Entra claims transformation, current-user accessor, role resolver, identity hasher, Cosmos, telemetry; ModelAccess/ (014); Chat/ (pipeline, Cosmos stores, daily counter (004); multi-chat session store + fan-out/fan-in dispatcher (006)), Redaction/ (regex PII), Safety/ (Content Safety), ModelProviders/ (Foundry adapter + chat completion client, 004)
-  EnterpriseAIPlatform.Web               # Blazor host, authZ policies, health/whoami/admin endpoints; Endpoints/ModelAccess (014); Endpoints/Chat (004); Endpoints/MultiChat (006); Endpoints/UserPreferences (004/014)
+  EnterpriseAIPlatform.Domain           # role flags, identity value objects; ModelAccess/ entities (014); Chat/ entities (004/006); Support/ entities (017)
+  EnterpriseAIPlatform.Application       # contracts + ServerActionResponse, RoleDowngrade, PolicyNames; ModelAccess/ (014); Chat/ (pipeline/redaction/safety/completion-client contracts (004), multi-chat session store contract + quadrant rules (006)); Support/ (changelog/acknowledgment/feedback contracts + alert-window evaluator, 017)
+  EnterpriseAIPlatform.Infrastructure    # Entra claims transformation, current-user accessor, role resolver, identity hasher, Cosmos, telemetry; ModelAccess/ (014); Chat/ (pipeline, Cosmos stores, daily counter (004); multi-chat session store + fan-out/fan-in dispatcher (006)); Redaction/ (regex PII), Safety/ (Content Safety), ModelProviders/ (Foundry adapter + chat completion client, 004); Support/ (changelog reader, feedback forwarder, acknowledgment store, 017), HealthChecks/ (Cosmos/Key Vault checks, 017)
+  EnterpriseAIPlatform.Web               # Blazor host, authZ policies, health/whoami/admin endpoints; Endpoints/ModelAccess (014); Endpoints/Chat (004); Endpoints/MultiChat (006); Endpoints/Support (017); Endpoints/UserPreferences (004/014)
 tests/
-  EnterpriseAIPlatform.UnitTests         # downgrade, role mapping, hashing, no-session (002); model-access/catalog/config (014); chat pipeline gate ordering, PII redaction, Content Safety, resilience wiring (004); quadrant floor/cap, fan-in merge (006)
-  EnterpriseAIPlatform.IntegrationTests  # route + admin gating (002); admin gate, soft delete, catalog metadata (014); send-message endpoint streaming + persistence, generic-500 (004); session restore, parallel-send, error isolation (006)
-  EnterpriseAIPlatform.ArchitectureTests # one-implementation-per-concern guards for all four specs
+  EnterpriseAIPlatform.UnitTests         # downgrade, role mapping, hashing, no-session (002); model-access/catalog/config (014); chat pipeline gate ordering, PII redaction, Content Safety, resilience wiring (004); quadrant floor/cap, fan-in merge (006); changelog reader, alert-window, health-check sanitization (017)
+  EnterpriseAIPlatform.IntegrationTests  # route + admin gating (002); admin gate, soft delete, catalog metadata (014); send-message endpoint streaming + persistence, generic-500 (004); session restore, parallel-send, error isolation (006); health probes, feedback ownership, acknowledgment round-trip (017)
+  EnterpriseAIPlatform.ArchitectureTests # one-implementation-per-concern guards for all five specs
 ```
 
 ## Build, test, run
@@ -68,6 +68,9 @@ Set these before running against a real tenant (use user-secrets or environment 
 - `ModelProviders:AzureFoundry:Endpoint` — the R1 model endpoint. Deliberately has no API-key field: the adapter authenticates via workload identity (`DefaultAzureCredential`), never a static secret (FR-013).
 - `Cosmos:ChatContainerName` — holds chat thread/message documents (spec 004), default `chat`.
 - `ContentSafety:Endpoint` — the Content Safety guardrail. **Required in Production** (app fails to start if unset); optional in Development (allows messages through with a logged warning) so local dev doesn't need a live resource.
+- `Changelog:ContentDirectory` — Markdown changelog source, one file per version (spec 017), default `content/changelog`.
+- `KeyVault:VaultUri` — backs the `/health/ready` Key Vault check. **Required in Production**; optional in Development (reports Healthy without a live resource).
+- `Feedback:EcpiApiEndpoint`, `Feedback:EcpiApiKey` — the external, non-Azure ECPI Feedback API (spec 017). A static API key is the correct credential shape here — ECPI isn't an Azure resource, so workload identity doesn't apply.
 
 ## Status (spec 002)
 
@@ -101,3 +104,13 @@ A second pre-existing bug surfaced here: `StreamWriter { AutoFlush = true }` tri
 **Explicitly deferred to R2** — not started, not forgotten: US3 (Chat-Home starred personas) — no data-loss risk, and blocked on personas anyway.
 
 The quadrant floor/cap invariant (FR-004/005) lives in a pure `MultiChatQuadrantRules` static class (no I/O), shared by the real Cosmos store and the test fake — mirrors spec 014's `ModelAccessEvaluator` pattern so the two can't drift apart. The Blazor multi-chat UI itself is a follow-up task, consistent with specs 002/004/014 shipping API-only.
+
+## Status (spec 017)
+
+**R1 scope implemented + tested** (158/158 tests passing across the solution): US1 (changelog/version-alert lookup never throws on a missing/malformed source — returns an empty list instead), US2 (`/health/live`/`/health/ready` now run real Cosmos DB + Key Vault checks, sanitized so a failure identifies the dependency by name with zero raw error/connection text), US3 (feedback is rejected before any external call when the caller doesn't own the referenced thread; forwarding failures are logged only, never surfaced), and US4 (a 60-day acknowledgment cooldown governs version-alert visibility; a failed persistence write returns a non-2xx rather than a fabricated success).
+
+**Health checks are an upgrade, not a new route**: `/health/live`/`/health/ready` are the same routes spec 002 declared public — they were static stubs checking nothing; this spec wires them to `Microsoft.Extensions.Diagnostics.HealthChecks` for the first time. An unconfigured Cosmos/Key Vault reports **Healthy** (not Unhealthy) — a documented dev/test-only convenience (mirroring specs 002/004/014's "boots without a live dependency" pattern) that kept spec 002's existing health-route test green without modification; `KeyVault:VaultUri` unconfigured in Production still fails app startup, so this can't silently reach a real deployment.
+
+**Explicitly deferred to R2** — not started, not forgotten: US5 (real-time long-running-operation notifications) — no long-running operation exists anywhere in R1 to notify about.
+
+A minor test-scope issue surfaced here: spec 014's provider-secret scan test did a blanket string search across all of `appsettings.json`, which false-positived on this spec's unrelated `Feedback:EcpiApiKey` (a legitimate third-party credential placeholder, not an Azure model-provider secret). Narrowed that test to the `ModelProviders` config section, matching its actual intent.

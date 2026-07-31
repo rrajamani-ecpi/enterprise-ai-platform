@@ -9,9 +9,12 @@ using EnterpriseAIPlatform.Web.Endpoints;
 using EnterpriseAIPlatform.Web.Endpoints.Chat;
 using EnterpriseAIPlatform.Web.Endpoints.ModelAccess;
 using EnterpriseAIPlatform.Web.Endpoints.MultiChat;
+using EnterpriseAIPlatform.Web.Endpoints.Support;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Identity.Web;
 using Microsoft.Identity.Web.UI;
 
@@ -68,6 +71,9 @@ builder.Services.AddModelAccessInfrastructure(builder.Configuration);
 // --- Spec 004: chat message pipeline (Layer 3, depends on 002 + 014) ---
 builder.Services.AddChatInfrastructure(builder.Configuration);
 
+// --- Spec 017: changelog, health probes, feedback proxy (Layer 1, depends on 002 + 004) ---
+builder.Services.AddSupportInfrastructure(builder.Configuration);
+
 // --- Authorization: deny-by-default fallback + server-side admin gate (spec 002 FR-011/012/013) ---
 builder.Services.AddAuthorizationBuilder()
     .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
@@ -98,9 +104,21 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 
-// Public routes (explicit allow-list) — spec 002 contracts/route-table.md
-app.MapGet("/health/live", () => Results.Ok(new { status = "live" })).AllowAnonymous();
-app.MapGet("/health/ready", () => Results.Ok(new { status = "ready" })).AllowAnonymous();
+// Public routes (explicit allow-list) — spec 002 contracts/route-table.md.
+// Spec 017: real dependency checks (Cosmos DB always; Key Vault on readiness only, FR-006/007),
+// via a response writer that serializes only check name + status — never HealthReportEntry
+// .Exception/.Description, which is where raw provider error text would otherwise leak (FR-005).
+var healthResponseOptions = new HealthCheckOptions { ResponseWriter = WriteSanitizedHealthResponseAsync };
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("live"),
+    ResponseWriter = healthResponseOptions.ResponseWriter,
+}).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = healthResponseOptions.ResponseWriter,
+}).AllowAnonymous();
 
 // Protected endpoint: resolves the current user via the canonical accessor (FR-001/005).
 app.MapGet("/api/whoami", (ICurrentUserAccessor currentUser) =>
@@ -125,6 +143,9 @@ app.MapChatEndpoints();
 // Spec 006: multi-chat session persistence + parallel dispatch.
 app.MapMultiChatEndpoints();
 
+// Spec 017: changelog, version-alert acknowledgment, feedback proxy.
+app.MapSupportEndpoints();
+
 app.MapControllers();
 
 app.MapStaticAssets();
@@ -134,4 +155,21 @@ app.MapRazorComponents<App>()
 app.Run();
 
 /// <summary>Exposed so integration tests can use <c>WebApplicationFactory&lt;Program&gt;</c>.</summary>
-public partial class Program;
+public partial class Program
+{
+    /// <summary>
+    /// Spec 017 FR-005: serializes only the aggregate status and, per check, its name and status —
+    /// never <see cref="HealthReportEntry.Exception"/>/<see cref="HealthReportEntry.Description"/>,
+    /// which is exactly where raw provider error text would otherwise leak.
+    /// </summary>
+    internal static Task WriteSanitizedHealthResponseAsync(HttpContext context, HealthReport report)
+    {
+        context.Response.ContentType = "application/json";
+        var payload = new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.Select(e => new { name = e.Key, status = e.Value.Status.ToString() }),
+        };
+        return context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(payload));
+    }
+}

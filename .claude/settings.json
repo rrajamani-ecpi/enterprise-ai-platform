@@ -4,7 +4,8 @@
       "Bash(dotnet test *)",
       "Bash(SPECIFY_FEATURE_DIRECTORY=specs/004-chat-message-pipeline .specify/scripts/bash/setup-plan.sh --json)",
       "Bash(SPECIFY_FEATURE_DIRECTORY=specs/006-multi-chat-session-persistence .specify/scripts/bash/setup-plan.sh --json)",
-      "Bash(sed -i 's/^- \\\\[ \\\\] T/- [X] T/' /home/robert/enterprise-ai-platform/specs/006-multi-chat-session-persistence/tasks.md *)"
+      "Bash(sed -i 's/^- \\\\[ \\\\] T/- [X] T/' /home/robert/enterprise-ai-platform/specs/006-multi-chat-session-persistence/tasks.md *)",
+      "Bash(SPECIFY_FEATURE_DIRECTORY=specs/017-feedback-changelog-health-probes .specify/scripts/bash/setup-plan.sh --json)"
     ],
     "additionalDirectories": [
       "/home/robert/enterprise-ai-platform/specs/006-multi-chat-session-persistence"

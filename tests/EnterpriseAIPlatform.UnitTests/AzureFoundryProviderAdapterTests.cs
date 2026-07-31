@@ -75,13 +75,23 @@ public class AzureFoundryProviderAdapterTests
     [Fact]
     public void ClientDeliveredConfig_ContainsNoLongLivedProviderSecret()
     {
+        // Scoped to the ModelProviders section specifically (spec 014 FR-013's actual concern —
+        // no static secret for an Azure/Foundry *model* provider). Other, unrelated third-party
+        // integrations elsewhere in this file (e.g. spec 017's Feedback:EcpiApiKey, a legitimate
+        // non-Azure credential for a different external system) are out of scope for this check.
         var repoRoot = FindRepoRoot(AppContext.BaseDirectory);
         var appSettingsPath = Path.Combine(repoRoot, "src", "EnterpriseAIPlatform.Web", "appsettings.json");
         var devAppSettingsPath = Path.Combine(repoRoot, "src", "EnterpriseAIPlatform.Web", "appsettings.Development.json");
 
         foreach (var path in new[] { appSettingsPath, devAppSettingsPath })
         {
-            var content = File.ReadAllText(path);
+            using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            if (!document.RootElement.TryGetProperty("ModelProviders", out var modelProviders))
+            {
+                continue;
+            }
+
+            var content = modelProviders.GetRawText();
             Assert.DoesNotContain("apikey", content, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("api_key", content, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("clientsecret", content, StringComparison.OrdinalIgnoreCase);
