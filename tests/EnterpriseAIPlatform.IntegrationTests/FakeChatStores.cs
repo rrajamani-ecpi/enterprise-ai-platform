@@ -13,6 +13,9 @@ public sealed class FakeChatThreadStore : IChatThreadStore
     /// <summary>Test-only seam (FR-024): simulates an unhandled infrastructure failure before any gate runs.</summary>
     public bool ThrowOnGet { get; set; }
 
+    /// <summary>Test-only seam (spec 006 US2): on-demand creation fails for these multi-chat quadrant positions only.</summary>
+    public HashSet<int> FailOnCreateForPositions { get; } = new();
+
     public Task<ChatThreadModel?> GetAsync(string threadId, string ownerPartitionKey, CancellationToken cancellationToken = default)
     {
         if (ThrowOnGet)
@@ -24,8 +27,18 @@ public sealed class FakeChatThreadStore : IChatThreadStore
     }
 
     public Task<ChatThreadModel> CreateAsync(
-        string ownerPartitionKey, string ownerUserId, string modelId, CancellationToken cancellationToken = default)
+        string ownerPartitionKey,
+        string ownerUserId,
+        string modelId,
+        string? multiChatSessionId = null,
+        int? multiChatPosition = null,
+        CancellationToken cancellationToken = default)
     {
+        if (multiChatPosition is int position && FailOnCreateForPositions.Contains(position))
+        {
+            throw new InvalidOperationException($"Simulated thread-creation failure for quadrant {position}.");
+        }
+
         var thread = new ChatThreadModel
         {
             Id = Guid.NewGuid().ToString("n"),
@@ -34,6 +47,8 @@ public sealed class FakeChatThreadStore : IChatThreadStore
             Version = "v3",
             ModelId = modelId,
             CreatedAtUtc = DateTimeOffset.UtcNow,
+            MultiChatSessionId = multiChatSessionId,
+            MultiChatPosition = multiChatPosition,
         };
         _threads[thread.Id] = thread;
         return Task.FromResult(thread);

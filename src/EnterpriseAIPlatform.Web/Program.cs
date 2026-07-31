@@ -8,6 +8,7 @@ using EnterpriseAIPlatform.Web.Components;
 using EnterpriseAIPlatform.Web.Endpoints;
 using EnterpriseAIPlatform.Web.Endpoints.Chat;
 using EnterpriseAIPlatform.Web.Endpoints.ModelAccess;
+using EnterpriseAIPlatform.Web.Endpoints.MultiChat;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
@@ -120,6 +121,9 @@ app.MapUserPreferencesEndpoints();
 
 // Spec 004: chat message pipeline (send -> stream -> persist).
 app.MapChatEndpoints();
+
+// Spec 006: multi-chat session persistence + parallel dispatch.
+app.MapMultiChatEndpoints();
 
 app.MapControllers();
 

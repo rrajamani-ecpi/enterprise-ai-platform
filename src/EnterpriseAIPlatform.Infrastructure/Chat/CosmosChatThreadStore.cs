@@ -36,7 +36,12 @@ public sealed class CosmosChatThreadStore : IChatThreadStore
     }
 
     public async Task<ChatThreadModel> CreateAsync(
-        string ownerPartitionKey, string ownerUserId, string modelId, CancellationToken cancellationToken = default)
+        string ownerPartitionKey,
+        string ownerUserId,
+        string modelId,
+        string? multiChatSessionId = null,
+        int? multiChatPosition = null,
+        CancellationToken cancellationToken = default)
     {
         var thread = new ChatThreadModel
         {
@@ -46,6 +51,8 @@ public sealed class CosmosChatThreadStore : IChatThreadStore
             Version = "v3",
             ModelId = modelId,
             CreatedAtUtc = DateTimeOffset.UtcNow,
+            MultiChatSessionId = multiChatSessionId,
+            MultiChatPosition = multiChatPosition,
         };
 
         await Container.CreateItemAsync(

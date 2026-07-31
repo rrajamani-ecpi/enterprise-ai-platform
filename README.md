@@ -4,7 +4,7 @@ Enterprise AI Platform — a spec-driven (GitHub spec-kit) build. Specifications
 
 ## Release 1 — Authenticated Enterprise Chat (in progress)
 
-The first increment is the **walking skeleton** (spec 002): the canonical server-side session/role/authorization layer every later feature builds on. Spec 014 (Layer 1) adds the model registry, access-gating, and config-management service. Spec 004 (Layer 3) adds the first user-facing capability — the chat send → stream → persist pipeline, hardened with PII redaction, a Content Safety guardrail, and a reliability wrapper — all R1 scope only (see Status sections below), per [`docs/Release1-MVP Plan.md`](./docs/Release1-MVP%20Plan.md).
+The first increment is the **walking skeleton** (spec 002): the canonical server-side session/role/authorization layer every later feature builds on. Spec 014 (Layer 1) adds the model registry, access-gating, and config-management service. Spec 004 (Layer 3) adds the first user-facing capability — the chat send → stream → persist pipeline, hardened with PII redaction, a Content Safety guardrail, and a reliability wrapper. Spec 006 (Layer 4) adds multi-chat: a persisted, multi-quadrant layout that dispatches one message to N models in parallel for side-by-side comparison. All R1 scope only (see Status sections below), per [`docs/Release1-MVP Plan.md`](./docs/Release1-MVP%20Plan.md).
 
 ## Tech stack
 
@@ -20,14 +20,14 @@ The first increment is the **walking skeleton** (spec 002): the canonical server
 
 ```text
 src/
-  EnterpriseAIPlatform.Domain           # role flags, identity value objects; ModelAccess/ entities (014); Chat/ entities (004)
-  EnterpriseAIPlatform.Application       # contracts + ServerActionResponse, RoleDowngrade, PolicyNames; ModelAccess/ (014); Chat/ (pipeline/redaction/safety/completion-client contracts, 004)
-  EnterpriseAIPlatform.Infrastructure    # Entra claims transformation, current-user accessor, role resolver, identity hasher, Cosmos, telemetry; ModelAccess/ (014); Chat/ (pipeline, Cosmos stores, daily counter), Redaction/ (regex PII), Safety/ (Content Safety), ModelProviders/ (Foundry adapter + chat completion client, 004)
-  EnterpriseAIPlatform.Web               # Blazor host, authZ policies, health/whoami/admin endpoints; Endpoints/ModelAccess (014); Endpoints/Chat, Endpoints/UserPreferences (004/014)
+  EnterpriseAIPlatform.Domain           # role flags, identity value objects; ModelAccess/ entities (014); Chat/ entities (004/006)
+  EnterpriseAIPlatform.Application       # contracts + ServerActionResponse, RoleDowngrade, PolicyNames; ModelAccess/ (014); Chat/ (pipeline/redaction/safety/completion-client contracts (004), multi-chat session store contract + quadrant rules (006))
+  EnterpriseAIPlatform.Infrastructure    # Entra claims transformation, current-user accessor, role resolver, identity hasher, Cosmos, telemetry; ModelAccess/ (014); Chat/ (pipeline, Cosmos stores, daily counter (004); multi-chat session store + fan-out/fan-in dispatcher (006)), Redaction/ (regex PII), Safety/ (Content Safety), ModelProviders/ (Foundry adapter + chat completion client, 004)
+  EnterpriseAIPlatform.Web               # Blazor host, authZ policies, health/whoami/admin endpoints; Endpoints/ModelAccess (014); Endpoints/Chat (004); Endpoints/MultiChat (006); Endpoints/UserPreferences (004/014)
 tests/
-  EnterpriseAIPlatform.UnitTests         # downgrade, role mapping, hashing, no-session (002); model-access/catalog/config (014); chat pipeline gate ordering, PII redaction, Content Safety, resilience wiring (004)
-  EnterpriseAIPlatform.IntegrationTests  # route + admin gating (002); admin gate, soft delete, catalog metadata (014); send-message endpoint streaming + persistence, generic-500 (004)
-  EnterpriseAIPlatform.ArchitectureTests # one-implementation-per-concern guards for all three specs
+  EnterpriseAIPlatform.UnitTests         # downgrade, role mapping, hashing, no-session (002); model-access/catalog/config (014); chat pipeline gate ordering, PII redaction, Content Safety, resilience wiring (004); quadrant floor/cap, fan-in merge (006)
+  EnterpriseAIPlatform.IntegrationTests  # route + admin gating (002); admin gate, soft delete, catalog metadata (014); send-message endpoint streaming + persistence, generic-500 (004); session restore, parallel-send, error isolation (006)
+  EnterpriseAIPlatform.ArchitectureTests # one-implementation-per-concern guards for all four specs
 ```
 
 ## Build, test, run
@@ -91,3 +91,13 @@ A pre-existing walking-skeleton bug surfaced while building 014's admin write en
 The Blazor chat UI itself is a follow-up task — this phase ships the server-side pipeline and API surface only, consistent with how specs 002/014 shipped API-only.
 
 A second pre-existing bug surfaced here: `StreamWriter { AutoFlush = true }` triggers a **synchronous** `Flush()`, which `TestServer` (and some hosts) disallow on the response body, corrupting every streamed response into a spurious 500. Fixed by flushing explicitly and asynchronously after each chunk.
+
+## Status (spec 006)
+
+**R1 scope implemented + tested** (138/138 tests passing across the solution): US1 (multi-chat layout — quadrant count, model assignment, thread association — durably persisted and restored on load; on-demand thread creation persisted immediately, before the send proceeds), US2 (a thread-creation failure for one quadrant surfaces as a distinct, non-fatal per-quadrant error, never a generic 500 or a silently swallowed failure), and US4 (one message dispatched concurrently to every quadrant's assigned model, merged into one tagged `text/event-stream`, unblocked by another quadrant's latency or failure). Built **as written** per spec.md — flagged and confirmed with the user first, since it doesn't match `docs/Release1-MVP Plan.md`'s shorthand description of "006."
+
+**Key R1 scoping call**: spec.md describes per-quadrant *persona* assignment, but personas (specs 009/010) aren't in R1. The full `MultiChatSession` schema includes a `PersonaId` slot so personas slot in later without a schema change, but only **model** assignment (spec 014) is functional in R1.
+
+**Explicitly deferred to R2** — not started, not forgotten: US3 (Chat-Home starred personas) — no data-loss risk, and blocked on personas anyway.
+
+The quadrant floor/cap invariant (FR-004/005) lives in a pure `MultiChatQuadrantRules` static class (no I/O), shared by the real Cosmos store and the test fake — mirrors spec 014's `ModelAccessEvaluator` pattern so the two can't drift apart. The Blazor multi-chat UI itself is a follow-up task, consistent with specs 002/004/014 shipping API-only.

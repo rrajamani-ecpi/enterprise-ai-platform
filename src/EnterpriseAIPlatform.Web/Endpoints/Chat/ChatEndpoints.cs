@@ -25,7 +25,7 @@ public static class ChatEndpoints
 
             var caller = callerResult.Response!;
             var partitionKey = identityHasher.ForEmail(caller.Email).Value;
-            var thread = await threadStore.CreateAsync(partitionKey, caller.Email, request.ModelId, ct);
+            var thread = await threadStore.CreateAsync(partitionKey, caller.Email, request.ModelId, cancellationToken: ct);
 
             return Results.Ok(new ThreadResponse(thread.Id, thread.Version, thread.ModelId));
         });
