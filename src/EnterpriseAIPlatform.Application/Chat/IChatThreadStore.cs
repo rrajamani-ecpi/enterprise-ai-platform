@@ -7,6 +7,15 @@ public interface IChatThreadStore
 {
     Task<ChatThreadModel?> GetAsync(string threadId, string ownerPartitionKey, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// <paramref name="multiChatSessionId"/>/<paramref name="multiChatPosition"/> are spec 006's
+    /// extension (D5) — omitted (null) by every ordinary spec 004 call site.
+    /// </summary>
     Task<ChatThreadModel> CreateAsync(
-        string ownerPartitionKey, string ownerUserId, string modelId, CancellationToken cancellationToken = default);
+        string ownerPartitionKey,
+        string ownerUserId,
+        string modelId,
+        string? multiChatSessionId = null,
+        int? multiChatPosition = null,
+        CancellationToken cancellationToken = default);
 }

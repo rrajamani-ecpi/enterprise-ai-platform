@@ -27,6 +27,11 @@ internal sealed class ChatThreadDocument
 
     public List<string> DataProducts { get; set; } = new();
 
+    /// <summary>Spec 006 D5 — null for an ordinary single-chat thread.</summary>
+    public string? MultiChatSessionId { get; set; }
+
+    public int? MultiChatPosition { get; set; }
+
     public string Type => DocType;
 
     public static ChatThreadDocument FromModel(ChatThreadModel model) => new()
@@ -38,6 +43,8 @@ internal sealed class ChatThreadDocument
         ModelId = model.ModelId,
         CreatedAtUtc = model.CreatedAtUtc,
         DataProducts = model.DataProducts,
+        MultiChatSessionId = model.MultiChatSessionId,
+        MultiChatPosition = model.MultiChatPosition,
     };
 
     public ChatThreadModel ToModel() => new()
@@ -49,6 +56,8 @@ internal sealed class ChatThreadDocument
         ModelId = ModelId,
         CreatedAtUtc = CreatedAtUtc,
         DataProducts = DataProducts,
+        MultiChatSessionId = MultiChatSessionId,
+        MultiChatPosition = MultiChatPosition,
     };
 }
 
@@ -89,5 +98,69 @@ internal sealed class ChatMessageDocument
         Role = Role,
         Content = Content,
         CreatedAtUtc = CreatedAtUtc,
+    };
+}
+
+/// <summary>Spec 006 D1 — the third document type sharing spec 004's <c>chat</c> container.</summary>
+internal sealed class MultiChatSessionDocument
+{
+    public const string DocType = "multichat-session";
+
+    [JsonProperty("id")]
+    public required string Id { get; set; }
+
+    public required string PartitionKey { get; set; }
+
+    public required string OwnerUserId { get; set; }
+
+    public List<MultiChatQuadrantDocument> Quadrants { get; set; } = new();
+
+    public DateTimeOffset UpdatedAtUtc { get; set; }
+
+    public string Type => DocType;
+
+    public static MultiChatSessionDocument FromModel(MultiChatSession model) => new()
+    {
+        Id = model.Id,
+        PartitionKey = model.PartitionKey,
+        OwnerUserId = model.OwnerUserId,
+        Quadrants = model.Quadrants.Select(MultiChatQuadrantDocument.FromModel).ToList(),
+        UpdatedAtUtc = model.UpdatedAtUtc,
+    };
+
+    public MultiChatSession ToModel() => new()
+    {
+        Id = Id,
+        PartitionKey = PartitionKey,
+        OwnerUserId = OwnerUserId,
+        Quadrants = Quadrants.Select(q => q.ToModel()).ToList(),
+        UpdatedAtUtc = UpdatedAtUtc,
+    };
+}
+
+internal sealed class MultiChatQuadrantDocument
+{
+    public required int Position { get; set; }
+
+    public string? PersonaId { get; set; }
+
+    public string? ModelId { get; set; }
+
+    public string? ThreadId { get; set; }
+
+    public static MultiChatQuadrantDocument FromModel(MultiChatQuadrant model) => new()
+    {
+        Position = model.Position,
+        PersonaId = model.PersonaId,
+        ModelId = model.ModelId,
+        ThreadId = model.ThreadId,
+    };
+
+    public MultiChatQuadrant ToModel() => new()
+    {
+        Position = Position,
+        PersonaId = PersonaId,
+        ModelId = ModelId,
+        ThreadId = ThreadId,
     };
 }

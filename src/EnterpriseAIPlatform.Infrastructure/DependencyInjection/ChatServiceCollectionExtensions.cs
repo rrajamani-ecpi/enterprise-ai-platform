@@ -40,6 +40,10 @@ public static class ChatServiceCollectionExtensions
 
         services.AddScoped<IChatPipeline, ChatPipeline>();
 
+        // --- Spec 006: multi-chat session persistence + parallel dispatch (depends on the above) ---
+        services.AddScoped<IMultiChatSessionStore, CosmosMultiChatSessionStore>();
+        services.AddScoped<MultiChatDispatcher>();
+
         return services;
     }
 }
