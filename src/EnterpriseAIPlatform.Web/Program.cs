@@ -83,6 +83,9 @@ builder.Services.AddAuthorizationBuilder()
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// Spec 024: chat home screen state, scoped per Blazor circuit.
+builder.Services.AddScoped<EnterpriseAIPlatform.Web.Services.ChatComposerState>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

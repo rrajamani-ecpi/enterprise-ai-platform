@@ -1,0 +1,31 @@
+@using EnterpriseAIPlatform.Web.Services
+
+<div class="chat-transcript">
+    @if (Messages.Count == 0)
+    {
+        <p class="chat-transcript-empty">Start typing below to begin a new conversation.</p>
+    }
+    else
+    {
+        @foreach (var message in Messages)
+        {
+            <div class="chat-message chat-message-@message.Role">
+                <span class="chat-message-role">@(message.Role == "user" ? "You" : "Assistant")</span>
+                <p class="chat-message-content">@message.Content</p>
+                @if (!message.IsComplete)
+                {
+                    <span class="chat-message-status chat-message-streaming">Streaming…</span>
+                }
+                else if (message.IsInterrupted)
+                {
+                    <span class="chat-message-status chat-message-interrupted">Interrupted</span>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public List<ChatMessageViewState> Messages { get; set; } = new();
+}

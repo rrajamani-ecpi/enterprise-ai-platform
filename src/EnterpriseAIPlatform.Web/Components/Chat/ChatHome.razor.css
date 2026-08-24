@@ -1,0 +1,16 @@
+.chat-home {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-height: calc(100vh - 3rem);
+}
+
+.chat-home-header {
+    font-size: 0.9rem;
+    color: #55606b;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e3e7ea;
+}

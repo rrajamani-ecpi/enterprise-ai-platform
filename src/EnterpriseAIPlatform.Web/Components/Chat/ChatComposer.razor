@@ -1,0 +1,39 @@
+<div class="chat-composer">
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <p class="chat-composer-error" role="alert">@ErrorMessage</p>
+    }
+    <textarea class="chat-composer-input"
+              value="@ComposerText"
+              @oninput="HandleInputAsync"
+              disabled="@IsStreaming"
+              placeholder="Type a message…"></textarea>
+    <button type="button"
+            class="chat-composer-send"
+            disabled="@(IsStreaming || string.IsNullOrWhiteSpace(ComposerText))"
+            @onclick="HandleSendAsync">
+        Send
+    </button>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string ComposerText { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ComposerTextChanged { get; set; }
+
+    [Parameter, EditorRequired]
+    public bool IsStreaming { get; set; }
+
+    [Parameter]
+    public string? ErrorMessage { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnSend { get; set; }
+
+    private async Task HandleInputAsync(ChangeEventArgs e) =>
+        await ComposerTextChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty);
+
+    private async Task HandleSendAsync() => await OnSend.InvokeAsync();
+}

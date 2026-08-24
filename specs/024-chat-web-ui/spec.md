@@ -8,6 +8,13 @@
 
 **Input**: User description: "Create a new spec for the Blazor Chat UI — the web interface for R1's 'Authenticated Enterprise Chat' pilot, which has a fully working backend (specs 002, 014, 004, 006, 017) but no actual screen a user can open. Scope: sign-in/app shell; single-chat screen (create thread, send message, stream response, view history); thread list/switch/rename (new backend capabilities needed — spec 004 has no list-my-threads or rename endpoint today); multi-chat screen (quadrant layout, per-quadrant model assignment, single-message parallel send, side-by-side streaming); changelog/version-alert surface (lower priority). UI-layer spec — describes user-facing behavior, not implementation."
 
+## Clarifications
+
+### Session 2026-08-24
+
+- Q: While an assistant response is still streaming, can the user send another message in the same conversation? → A: Disable the send action until the current response finishes streaming
+- Q: On the chat home landing, does "offers to start a new conversation" require an explicit action first, or is an empty composer presented directly? → A: Landing presents an empty, ready-to-type composer directly — no separate creation step
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Sign in and land on a working chat home (Priority: P1)
@@ -20,7 +27,7 @@ A user opens the application, is authenticated (via the enterprise sign-in alrea
 
 **Acceptance Scenarios**:
 
-1. **Given** an authenticated user, **When** they open the application, **Then** they land on a chat home screen that identifies them and offers to start a new conversation.
+1. **Given** an authenticated user, **When** they open the application, **Then** they land on a chat home screen that identifies them and presents an empty, ready-to-type composer, with no separate creation step required.
 2. **Given** an unauthenticated visitor, **When** they open the application, **Then** they are routed into the existing sign-in flow before reaching any chat content.
 
 ---
@@ -105,8 +112,8 @@ A user opens a changelog view to see what has changed recently, and separately n
 
 ### Functional Requirements
 
-- **FR-001**: The system MUST route an unauthenticated visitor into the existing sign-in flow before showing any chat content, and MUST show an authenticated user a chat home screen identifying them and offering to start a new conversation.
-- **FR-002**: Users MUST be able to start a new conversation, send a message into it, and see the assistant's response render incrementally as it is received, not only after it completes.
+- **FR-001**: The system MUST route an unauthenticated visitor into the existing sign-in flow before showing any chat content, and MUST show an authenticated user a chat home screen identifying them, with an empty, ready-to-type composer presented directly (no separate "start conversation" action required).
+- **FR-002**: Users MUST be able to start a new conversation, send a message into it, and see the assistant's response render incrementally as it is received, not only after it completes. WHILE a response is actively streaming, THE SYSTEM MUST disable the send action for that conversation until the current response finishes.
 - **FR-003**: Users MUST be able to continue an existing conversation with a follow-up message that reflects the conversation's prior context.
 - **FR-004**: WHEN a message is rejected by a server-side guard (rate limit, content policy, or similar), THE SYSTEM MUST show the user a clear, specific reason; WHEN an unexpected failure occurs, THE SYSTEM MUST show a generic error with no internal detail exposed, in both cases leaving the user's typed input recoverable for retry.
 - **FR-005**: The system MUST provide a way for a user to list their own conversations and MUST NOT include any other user's conversations in that list.

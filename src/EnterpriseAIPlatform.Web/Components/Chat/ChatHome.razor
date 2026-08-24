@@ -1,0 +1,32 @@
+@inject ChatComposerState State
+@implements IDisposable
+
+<div class="chat-home">
+    <header class="chat-home-header">
+        @if (State.CurrentUser is not null)
+        {
+            <span>Signed in as @State.CurrentUser.Name (@State.CurrentUser.Email)</span>
+        }
+    </header>
+
+    <ChatTranscript Messages="State.Messages" />
+
+    <ChatComposer @bind-ComposerText="State.ComposerText"
+                  IsStreaming="State.IsStreaming"
+                  ErrorMessage="State.ErrorMessage"
+                  OnSend="SendAsync" />
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        State.OnChanged += StateHasChanged;
+    }
+
+    private async Task SendAsync() => await State.SendAsync();
+
+    public void Dispose()
+    {
+        State.OnChanged -= StateHasChanged;
+    }
+}

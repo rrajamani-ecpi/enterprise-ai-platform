@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="bunit" Version="*" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="*" />
     <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="*" />
@@ -27,6 +28,7 @@
     <ProjectReference Include="..\..\src\EnterpriseAIPlatform.Application\EnterpriseAIPlatform.Application.csproj" />
     <ProjectReference Include="..\..\src\EnterpriseAIPlatform.Domain\EnterpriseAIPlatform.Domain.csproj" />
     <ProjectReference Include="..\..\src\EnterpriseAIPlatform.Infrastructure\EnterpriseAIPlatform.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\EnterpriseAIPlatform.Web\EnterpriseAIPlatform.Web.csproj" />
   </ItemGroup>
 
 </Project>
