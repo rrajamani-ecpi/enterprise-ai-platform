@@ -1,4 +1,5 @@
 @inject ChatComposerState State
+@inject ConversationListState ListState
 @implements IDisposable
 
 <div class="chat-home">
@@ -23,7 +24,14 @@
         State.OnChanged += StateHasChanged;
     }
 
-    private async Task SendAsync() => await State.SendAsync();
+    private async Task SendAsync()
+    {
+        await State.SendAsync();
+
+        // Spec 024 US3 FR-005 — a send bumps the thread's activity time server-side (ChatPipeline),
+        // so refresh the sidebar order to reflect it.
+        await ListState.LoadConversationsAsync();
+    }
 
     public void Dispose()
     {

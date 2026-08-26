@@ -6,4 +6,8 @@ namespace EnterpriseAIPlatform.Application.Chat;
 public interface IChatMessageStore
 {
     Task AppendAsync(ChatMessageModel message, CancellationToken cancellationToken = default);
+
+    /// <summary>Spec 024 US3 FR-006 — a thread's full message history, oldest first.</summary>
+    Task<IReadOnlyList<ChatMessageModel>> ListByThreadAsync(
+        string threadId, string ownerPartitionKey, CancellationToken cancellationToken = default);
 }

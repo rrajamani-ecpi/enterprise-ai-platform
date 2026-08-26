@@ -1,0 +1,10 @@
+@page "/chat/{ThreadId}"
+
+<PageTitle>Chat</PageTitle>
+
+<ChatShell ThreadId="ThreadId" />
+
+@code {
+    [Parameter]
+    public string ThreadId { get; set; } = string.Empty;
+}

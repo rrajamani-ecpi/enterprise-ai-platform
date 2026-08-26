@@ -143,6 +143,10 @@ public sealed class ChatPipeline : IChatPipeline
                 CreatedAtUtc = DateTimeOffset.UtcNow,
             },
             cancellationToken);
+
+        // Spec 024 US3 FR-005 — bumps the thread's activity time so the conversation list reorders
+        // most-recently-active-first.
+        await _threadStore.TouchLastActivityAsync(threadId, partitionKey, cancellationToken);
     }
 
     private async Task<PreflightResult> RunMessageLimitPreflightAsync(

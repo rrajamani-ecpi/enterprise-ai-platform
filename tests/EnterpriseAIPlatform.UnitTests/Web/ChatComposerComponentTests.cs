@@ -27,6 +27,7 @@ public class ChatComposerComponentTests : BunitContext
             currentUserAccessor,
             Substitute.For<IIdentityHasher>(),
             Substitute.For<IChatThreadStore>(),
+            Substitute.For<IChatMessageStore>(),
             Substitute.For<IChatPipeline>(),
             Substitute.For<IModelAccessService>());
     }
@@ -34,8 +35,14 @@ public class ChatComposerComponentTests : BunitContext
     [Fact]
     public void ChatHome_AuthenticatedUser_ShowsIdentity_AndEmptyComposer_NotPlaceholder()
     {
+        var currentUserAccessor = Substitute.For<ICurrentUserAccessor>();
+        currentUserAccessor.GetCurrentUser().Returns(
+            ServerActionResponse<UserModel>.Ok(new UserModel { Name = "Alice", Email = "alice@contoso.com" }));
         var state = CreateState(new UserModel { Name = "Alice", Email = "alice@contoso.com" });
         Services.AddSingleton(state);
+        // ChatHome refreshes the sidebar after a send (spec 024 US3) — needs a ConversationListState too.
+        Services.AddSingleton(new ConversationListState(
+            currentUserAccessor, Substitute.For<IIdentityHasher>(), Substitute.For<IChatThreadStore>()));
 
         // bUnit 2.9.0's Render<T>(Action<ComponentParameterCollectionBuilder<T>>) does not mount
         // the component when the builder adds zero parameters (ChatHome takes none) — the

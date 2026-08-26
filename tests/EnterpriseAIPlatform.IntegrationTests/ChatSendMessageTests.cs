@@ -81,6 +81,7 @@ public sealed class ChatSendMessageTests : IClassFixture<ChatWebApplicationFacto
             Version = "v2",
             ModelId = SeededModelId,
             CreatedAtUtc = DateTimeOffset.UtcNow,
+            DisplayName = "Conversation — Jan 1, 2026 12:00 PM",
         });
 
         var client = CreateClient(owner);

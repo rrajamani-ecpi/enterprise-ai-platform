@@ -85,6 +85,7 @@ builder.Services.AddRazorComponents()
 
 // Spec 024: chat home screen state, scoped per Blazor circuit.
 builder.Services.AddScoped<EnterpriseAIPlatform.Web.Services.ChatComposerState>();
+builder.Services.AddScoped<EnterpriseAIPlatform.Web.Services.ConversationListState>();
 
 var app = builder.Build();
 

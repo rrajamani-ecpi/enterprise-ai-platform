@@ -1,0 +1,102 @@
+@using EnterpriseAIPlatform.Domain.Chat
+@inject ConversationListState ListState
+@inject ChatComposerState ComposerState
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<nav class="conversation-list">
+    @if (ListState.LoadErrorMessage is not null)
+    {
+        <p class="conversation-list-load-error" role="alert">@ListState.LoadErrorMessage</p>
+    }
+    else if (ListState.IsLoading)
+    {
+        <p class="conversation-list-loading">Loading…</p>
+    }
+    else if (ListState.Conversations.Count == 0)
+    {
+        <p class="conversation-list-empty">No conversations yet — send a message to start one.</p>
+    }
+    else
+    {
+        @foreach (var conversation in ListState.Conversations)
+        {
+            <div class="conversation-list-item @(conversation.Id == ComposerState.ThreadId ? "conversation-list-item-active" : "")">
+                @if (_editingId == conversation.Id)
+                {
+                    <input class="conversation-list-rename-input"
+                           value="@_editingText"
+                           @oninput="OnEditingTextChanged"
+                           @onkeydown="e => HandleKeyDownAsync(e, conversation.Id)"
+                           @onblur="() => CommitRenameAsync(conversation.Id)" />
+                }
+                else
+                {
+                    <button type="button" class="conversation-list-item-name" @onclick="() => Select(conversation.Id)">
+                        @conversation.DisplayName
+                    </button>
+                    <button type="button" class="conversation-list-item-rename" title="Rename" @onclick="() => BeginRename(conversation)">✎</button>
+                }
+            </div>
+        }
+    }
+
+    @if (ListState.RenameErrorMessage is not null)
+    {
+        <p class="conversation-list-rename-error" role="alert">@ListState.RenameErrorMessage</p>
+    }
+</nav>
+
+@code {
+    private string? _editingId;
+    private string _editingText = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        ListState.OnChanged += StateHasChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ListState.LoadConversationsAsync();
+    }
+
+    private void Select(string threadId) => Navigation.NavigateTo($"/chat/{threadId}");
+
+    private void BeginRename(ChatThreadModel conversation)
+    {
+        _editingId = conversation.Id;
+        _editingText = conversation.DisplayName;
+    }
+
+    private void OnEditingTextChanged(ChangeEventArgs e) => _editingText = e.Value?.ToString() ?? string.Empty;
+
+    private async Task CommitRenameAsync(string threadId)
+    {
+        if (_editingId != threadId)
+        {
+            return; // Already committed or cancelled by the other event (blur vs. Enter).
+        }
+
+        var newName = _editingText;
+        _editingId = null;
+        await ListState.RenameAsync(threadId, newName);
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e, string threadId)
+    {
+        if (e.Key == "Enter")
+        {
+            await CommitRenameAsync(threadId);
+        }
+        else if (e.Key == "Escape")
+        {
+            _editingId = null;
+        }
+    }
+
+    public void Dispose()
+    {
+        ListState.OnChanged -= StateHasChanged;
+    }
+}

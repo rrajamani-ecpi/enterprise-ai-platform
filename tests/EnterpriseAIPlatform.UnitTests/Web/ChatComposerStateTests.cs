@@ -23,6 +23,7 @@ public class ChatComposerStateTests
     private readonly ICurrentUserAccessor _currentUserAccessor = Substitute.For<ICurrentUserAccessor>();
     private readonly IIdentityHasher _identityHasher = Substitute.For<IIdentityHasher>();
     private readonly IChatThreadStore _threadStore = Substitute.For<IChatThreadStore>();
+    private readonly IChatMessageStore _messageStore = Substitute.For<IChatMessageStore>();
     private readonly IChatPipeline _chatPipeline = Substitute.For<IChatPipeline>();
     private readonly IModelAccessService _modelAccessService = Substitute.For<IModelAccessService>();
     private readonly UserModel _caller = new() { Name = "Alice", Email = "alice@contoso.com" };
@@ -38,11 +39,12 @@ public class ChatComposerStateTests
             .Returns(new ChatThreadModel
             {
                 Id = ThreadId, PartitionKey = PartitionKey, OwnerUserId = _caller.Email, ModelId = FirstModelId,
+                DisplayName = "Conversation — Jan 1, 2026 12:00 PM",
             });
     }
 
     private ChatComposerState CreateState() =>
-        new(_currentUserAccessor, _identityHasher, _threadStore, _chatPipeline, _modelAccessService);
+        new(_currentUserAccessor, _identityHasher, _threadStore, _messageStore, _chatPipeline, _modelAccessService);
 
     private static ModelConfigDocument Model(string id) => new() { Id = id, DisplayName = id, Provider = "azure-foundry" };
 
@@ -206,5 +208,90 @@ public class ChatComposerStateTests
         Assert.True(assistantMessage.IsInterrupted);
         Assert.True(assistantMessage.IsComplete);
         Assert.NotNull(state.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task SwitchToAsync_ExistingOwnedThread_LoadsHistory()
+    {
+        var thread = new ChatThreadModel
+        {
+            Id = ThreadId, PartitionKey = PartitionKey, OwnerUserId = _caller.Email, ModelId = FirstModelId,
+            DisplayName = "Trip planning",
+        };
+        _threadStore.GetAsync(ThreadId, PartitionKey, Arg.Any<CancellationToken>()).Returns(thread);
+        _messageStore.ListByThreadAsync(ThreadId, PartitionKey, Arg.Any<CancellationToken>())
+            .Returns(new List<ChatMessageModel>
+            {
+                new() { Id = "m1", PartitionKey = PartitionKey, ThreadId = ThreadId, Role = ChatMessageRole.User, Content = "hi", CreatedAtUtc = DateTimeOffset.UtcNow },
+                new() { Id = "m2", PartitionKey = PartitionKey, ThreadId = ThreadId, Role = ChatMessageRole.Assistant, Content = "hello!", CreatedAtUtc = DateTimeOffset.UtcNow },
+            });
+        var state = CreateState();
+
+        var found = await state.SwitchToAsync(ThreadId);
+
+        Assert.False(state.IsNotFound);
+        Assert.Equal(ThreadId, state.ThreadId);
+        Assert.Equal(FirstModelId, state.ModelId);
+        Assert.Equal(2, state.Messages.Count);
+        Assert.Equal("hi", state.Messages[0].Content);
+        Assert.Equal("user", state.Messages[0].Role);
+        Assert.True(state.Messages[0].IsComplete);
+        Assert.Equal("hello!", state.Messages[1].Content);
+        Assert.Equal("assistant", state.Messages[1].Role);
+    }
+
+    [Fact]
+    public async Task SwitchToAsync_ForeignOrNonexistentThread_SetsIsNotFound()
+    {
+        _threadStore.GetAsync("someone-elses-thread", PartitionKey, Arg.Any<CancellationToken>())
+            .Returns((ChatThreadModel?)null);
+        var state = CreateState();
+
+        await state.SwitchToAsync("someone-elses-thread");
+
+        Assert.True(state.IsNotFound);
+        Assert.Null(state.ThreadId);
+        Assert.Empty(state.Messages);
+    }
+
+    [Fact]
+    public async Task SwitchToAsync_SuccessfulSwitch_ClearsIsNotFoundFromAPriorFailedSwitch()
+    {
+        _threadStore.GetAsync("bad-id", PartitionKey, Arg.Any<CancellationToken>()).Returns((ChatThreadModel?)null);
+        var thread = new ChatThreadModel
+        {
+            Id = ThreadId, PartitionKey = PartitionKey, OwnerUserId = _caller.Email, ModelId = FirstModelId,
+            DisplayName = "Trip planning",
+        };
+        _threadStore.GetAsync(ThreadId, PartitionKey, Arg.Any<CancellationToken>()).Returns(thread);
+        _messageStore.ListByThreadAsync(ThreadId, PartitionKey, Arg.Any<CancellationToken>())
+            .Returns(new List<ChatMessageModel>());
+        var state = CreateState();
+        await state.SwitchToAsync("bad-id");
+        Assert.True(state.IsNotFound);
+
+        await state.SwitchToAsync(ThreadId);
+
+        Assert.False(state.IsNotFound);
+        Assert.Equal(ThreadId, state.ThreadId);
+    }
+
+    [Fact]
+    public async Task ResetToNew_ClearsActiveConversationState()
+    {
+        _chatPipeline.SendMessageAsync(_caller, ThreadId, "hello", FirstModelId, Arg.Any<CancellationToken>())
+            .Returns(new ChatSendResult.Streaming(ChunksOf("hi")));
+        var state = CreateState();
+        state.ComposerText = "hello";
+        await state.SendAsync();
+
+        state.ResetToNew();
+
+        Assert.Null(state.ThreadId);
+        Assert.Null(state.ModelId);
+        Assert.False(state.IsNotFound);
+        Assert.Null(state.ErrorMessage);
+        Assert.Equal(string.Empty, state.ComposerText);
+        Assert.Empty(state.Messages);
     }
 }

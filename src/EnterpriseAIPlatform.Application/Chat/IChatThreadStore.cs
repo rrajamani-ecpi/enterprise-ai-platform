@@ -1,3 +1,4 @@
+using EnterpriseAIPlatform.Application.Common;
 using EnterpriseAIPlatform.Domain.Chat;
 
 namespace EnterpriseAIPlatform.Application.Chat;
@@ -18,4 +19,19 @@ public interface IChatThreadStore
         string? multiChatSessionId = null,
         int? multiChatPosition = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Spec 024 US3 FR-005 — the caller's own conversations only, ordered most-recently-active first.</summary>
+    Task<IReadOnlyList<ChatThreadModel>> ListByOwnerAsync(string ownerPartitionKey, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Spec 024 US3 FR-007. Returns <see cref="ResponseStatus.ERROR"/> for an empty/whitespace-only
+    /// name (leaving the prior name in effect) and <see cref="ResponseStatus.NOT_FOUND"/> for a
+    /// thread that doesn't exist or isn't owned by <paramref name="ownerPartitionKey"/> — the same
+    /// outcome for both, so a foreign thread's existence is never revealed (FR-013).
+    /// </summary>
+    Task<ServerActionResponse<ChatThreadModel>> RenameAsync(
+        string threadId, string ownerPartitionKey, string newDisplayName, CancellationToken cancellationToken = default);
+
+    /// <summary>Spec 024 US3 FR-005 — bumps <see cref="ChatThreadModel.LastActivityAtUtc"/> to now; called by <c>IChatPipeline</c> after a message is persisted.</summary>
+    Task TouchLastActivityAsync(string threadId, string ownerPartitionKey, CancellationToken cancellationToken = default);
 }

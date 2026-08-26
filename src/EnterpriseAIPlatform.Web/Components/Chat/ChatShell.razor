@@ -1,0 +1,46 @@
+@inject ChatComposerState ComposerState
+
+<div class="chat-shell">
+    <ConversationList />
+
+    <div class="chat-shell-main">
+        @if (ComposerState.IsNotFound)
+        {
+            <div class="chat-shell-not-found">
+                <p>This conversation could not be found.</p>
+                <a href="/">Start a new conversation</a>
+            </div>
+        }
+        else
+        {
+            <ChatHome />
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Route-supplied conversation id (spec 024 US3); null when hosted from "/" (a fresh conversation).</summary>
+    [Parameter]
+    public string? ThreadId { get; set; }
+
+    private string? _loadedThreadId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedThreadId == ThreadId)
+        {
+            return;
+        }
+
+        _loadedThreadId = ThreadId;
+
+        if (ThreadId is null)
+        {
+            ComposerState.ResetToNew();
+        }
+        else
+        {
+            await ComposerState.SwitchToAsync(ThreadId);
+        }
+    }
+}

@@ -59,7 +59,7 @@ public sealed class SupportEndpointsTests : IClassFixture<SupportWebApplicationF
         _factory.ThreadStore.Seed(new ChatThreadModel
         {
             Id = "not-my-thread", PartitionKey = ownerPartitionKey, OwnerUserId = owner,
-            Version = "v3", ModelId = "azure-foundry:gpt-5",
+            Version = "v3", ModelId = "azure-foundry:gpt-5", DisplayName = "Conversation — Jan 1, 2026 12:00 PM",
         });
 
         var client = CreateClient("someone-else@contoso.com");
@@ -79,7 +79,7 @@ public sealed class SupportEndpointsTests : IClassFixture<SupportWebApplicationF
         _factory.ThreadStore.Seed(new ChatThreadModel
         {
             Id = "my-thread", PartitionKey = ownerPartitionKey, OwnerUserId = owner,
-            Version = "v3", ModelId = "azure-foundry:gpt-5",
+            Version = "v3", ModelId = "azure-foundry:gpt-5", DisplayName = "Conversation — Jan 1, 2026 12:00 PM",
         });
         _factory.FeedbackForwarder.ShouldSucceed = false;
 
