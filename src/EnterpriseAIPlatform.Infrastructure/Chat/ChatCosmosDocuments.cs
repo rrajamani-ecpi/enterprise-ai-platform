@@ -25,6 +25,12 @@ internal sealed class ChatThreadDocument
 
     public DateTimeOffset CreatedAtUtc { get; set; }
 
+    /// <summary>Spec 024 US3 — creation-timestamp-based default, renamable thereafter.</summary>
+    public required string DisplayName { get; set; }
+
+    /// <summary>Spec 024 US3 — drives the conversation list's most-recently-active-first order.</summary>
+    public DateTimeOffset LastActivityAtUtc { get; set; }
+
     public List<string> DataProducts { get; set; } = new();
 
     /// <summary>Spec 006 D5 — null for an ordinary single-chat thread.</summary>
@@ -42,6 +48,8 @@ internal sealed class ChatThreadDocument
         Version = model.Version,
         ModelId = model.ModelId,
         CreatedAtUtc = model.CreatedAtUtc,
+        DisplayName = model.DisplayName,
+        LastActivityAtUtc = model.LastActivityAtUtc,
         DataProducts = model.DataProducts,
         MultiChatSessionId = model.MultiChatSessionId,
         MultiChatPosition = model.MultiChatPosition,
@@ -55,6 +63,8 @@ internal sealed class ChatThreadDocument
         Version = Version,
         ModelId = ModelId,
         CreatedAtUtc = CreatedAtUtc,
+        DisplayName = DisplayName,
+        LastActivityAtUtc = LastActivityAtUtc,
         DataProducts = DataProducts,
         MultiChatSessionId = MultiChatSessionId,
         MultiChatPosition = MultiChatPosition,

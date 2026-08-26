@@ -15,6 +15,11 @@
 - Q: While an assistant response is still streaming, can the user send another message in the same conversation? → A: Disable the send action until the current response finishes streaming
 - Q: On the chat home landing, does "offers to start a new conversation" require an explicit action first, or is an empty composer presented directly? → A: Landing presents an empty, ready-to-type composer directly — no separate creation step
 
+### Session 2026-08-26
+
+- Q: What order should a user's conversation list be shown in? → A: Most-recently-active first (sending/receiving a message bumps it to the top)
+- Q: What is a conversation's default label before it's renamed? → A: Based on creation timestamp (e.g. "Conversation — Aug 26, 2026 3:41 PM")
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Sign in and land on a working chat home (Priority: P1)
@@ -52,7 +57,7 @@ A user starts a new conversation, types a message, sends it, and watches the ass
 
 ### User Story 3 - See, switch between, and rename past conversations (Priority: P2)
 
-A user with multiple prior conversations opens a list of their own conversations, switches into one to continue it, and renames a conversation to something more memorable than its default label.
+A user with multiple prior conversations opens a list of their own conversations, switches into one to continue it, and renames a conversation to something more memorable than its default label (a creation-timestamp-based name, e.g. "Conversation — Aug 26, 2026 3:41 PM", assigned automatically when the conversation is created).
 
 **Why this priority**: A pilot user who can only ever see their most recent conversation will lose track of earlier work; this is the next most valuable capability after the core send/receive loop, but the pilot is still usable without it (Story 2 alone is a viable MVP).
 
@@ -116,9 +121,9 @@ A user opens a changelog view to see what has changed recently, and separately n
 - **FR-002**: Users MUST be able to start a new conversation, send a message into it, and see the assistant's response render incrementally as it is received, not only after it completes. WHILE a response is actively streaming, THE SYSTEM MUST disable the send action for that conversation until the current response finishes.
 - **FR-003**: Users MUST be able to continue an existing conversation with a follow-up message that reflects the conversation's prior context.
 - **FR-004**: WHEN a message is rejected by a server-side guard (rate limit, content policy, or similar), THE SYSTEM MUST show the user a clear, specific reason; WHEN an unexpected failure occurs, THE SYSTEM MUST show a generic error with no internal detail exposed, in both cases leaving the user's typed input recoverable for retry.
-- **FR-005**: The system MUST provide a way for a user to list their own conversations and MUST NOT include any other user's conversations in that list.
+- **FR-005**: The system MUST provide a way for a user to list their own conversations, ordered most-recently-active first (a conversation's activity time updates whenever a message is sent or received in it), and MUST NOT include any other user's conversations in that list.
 - **FR-006**: Users MUST be able to select a conversation from their list and continue it, with its prior messages rendered before they send anything new.
-- **FR-007**: Users MUST be able to rename one of their own conversations; the new name MUST persist and MUST be rejected if empty or whitespace-only, leaving the prior name in effect.
+- **FR-007**: Every conversation MUST be assigned a default display name at creation, based on its creation timestamp (e.g. "Conversation — Aug 26, 2026 3:41 PM"), before any rename occurs. Users MUST be able to rename one of their own conversations; the new name MUST persist and MUST be rejected if empty or whitespace-only, leaving the prior name in effect.
 - **FR-008**: The system MUST provide a multi-pane comparison view where each pane can be independently assigned a model, honoring the same minimum/maximum pane-count rules already enforced by the underlying session (removing a pane at the minimum clears its assignment rather than removing the pane; adding beyond the maximum is refused).
 - **FR-009**: WHEN a user sends one message from the comparison view, THE SYSTEM MUST dispatch it to every pane with an assigned model and MUST render each pane's response independently as it arrives, such that one pane's latency or failure never delays or blocks another pane's response from displaying.
 - **FR-010**: The system MUST provide a changelog view showing available entries newest-first, and MUST show a defined empty state (not an error) when no entries are available.
@@ -128,7 +133,7 @@ A user opens a changelog view to see what has changed recently, and separately n
 
 ### Key Entities *(include if feature involves data)*
 
-- **Conversation summary**: the list-facing representation of a conversation — identifier, display name (renamable), and enough detail (e.g., last-updated) to distinguish it in a list. Backed by the existing conversation/thread record; this spec adds the *listing* and *renaming* capability on top of the existing single-conversation create/read capability, which do not exist yet.
+- **Conversation summary**: the list-facing representation of a conversation — identifier, display name (renamable), and a last-activity timestamp (updated whenever a message is sent or received) used to distinguish it in a list and to order the list most-recently-active first. Backed by the existing conversation/thread record; this spec adds the *listing* and *renaming* capability on top of the existing single-conversation create/read capability, which do not exist yet.
 - **Streaming message view-state**: the client-side, in-progress representation of a response as it arrives incrementally, including whether it completed normally or was interrupted.
 - **Comparison session**: the multi-pane layout a user sees — pane count, per-pane model assignment — backed by the existing multi-conversation session capability.
 - **Changelog entry / acknowledgment**: the versioned content and the user's dismissal record, backed by the existing changelog and acknowledgment capability.

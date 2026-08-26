@@ -1,7 +1,11 @@
 using System.Net;
 using System.Text.Json;
+using EnterpriseAIPlatform.Application.Chat;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace EnterpriseAIPlatform.IntegrationTests;
 
@@ -54,6 +58,14 @@ public sealed class DevelopmentAuthenticationTests
             builder.UseSetting("PlatformAuthentication:DevelopmentUser:Email", "dev.user@example.test");
             builder.UseSetting("PlatformAuthentication:DevelopmentUser:IsAdmin", "true");
             builder.UseSetting("PlatformAuthentication:DevelopmentUser:IsEmployee", "true");
+
+            // Rendering "/" now loads the spec 024 US3 conversation sidebar, which needs
+            // IChatThreadStore — swap in the fake so this test doesn't need a live Cosmos DB.
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IChatThreadStore>();
+                services.AddSingleton<IChatThreadStore>(new FakeChatThreadStore());
+            });
         }
     }
 

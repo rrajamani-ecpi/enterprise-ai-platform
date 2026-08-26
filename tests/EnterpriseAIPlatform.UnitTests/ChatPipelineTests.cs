@@ -45,7 +45,7 @@ public class ChatPipelineTests
             .Returns(new ChatThreadModel
             {
                 Id = ThreadId, PartitionKey = PartitionKey, OwnerUserId = _caller.Email,
-                Version = "v3", ModelId = DefaultModelId,
+                Version = "v3", ModelId = DefaultModelId, DisplayName = "Conversation — Jan 1, 2026 12:00 PM",
             });
         _messageLimitConfigService.GetAsync(Arg.Any<CancellationToken>())
             .Returns(ServerActionResponse<MessageLimitConfig>.Ok(new MessageLimitConfig()));
@@ -88,6 +88,7 @@ public class ChatPipelineTests
             .Returns(new ChatThreadModel
             {
                 Id = ThreadId, PartitionKey = PartitionKey, OwnerUserId = _caller.Email, Version = "v2", ModelId = DefaultModelId,
+                DisplayName = "Conversation — Jan 1, 2026 12:00 PM",
             });
 
         var result = await BuildPipeline().SendMessageAsync(_caller, ThreadId, "hello", DefaultModelId);

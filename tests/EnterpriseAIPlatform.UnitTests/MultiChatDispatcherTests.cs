@@ -96,6 +96,7 @@ public class MultiChatDispatcherTests
             .Returns(new ChatThreadModel
             {
                 Id = "new-thread", PartitionKey = PartitionKey, OwnerUserId = _caller.Email, ModelId = "m:a",
+                DisplayName = "Conversation — Jan 1, 2026 12:00 PM",
                 MultiChatSessionId = session.Id, MultiChatPosition = 0,
             });
         _chatPipeline.SendMessageAsync(_caller, "new-thread", "hi", "m:a", Arg.Any<CancellationToken>())

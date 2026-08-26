@@ -5,11 +5,80 @@ using EnterpriseAIPlatform.Domain.Chat;
 
 namespace EnterpriseAIPlatform.Web.Endpoints.Chat;
 
-/// <summary>Spec 004's route surface — contracts/route-table.md.</summary>
+/// <summary>Spec 004's route surface (contracts/route-table.md) plus spec 024 US3's list/history/rename routes (contracts/chat-threads-http-contract.md).</summary>
 public static class ChatEndpoints
 {
     public static IEndpointRouteBuilder MapChatEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/chat/threads", async (
+            ICurrentUserAccessor currentUser,
+            IIdentityHasher identityHasher,
+            IChatThreadStore threadStore,
+            CancellationToken ct) =>
+        {
+            var callerResult = currentUser.GetCurrentUser();
+            if (callerResult.Status != ResponseStatus.OK)
+            {
+                return Results.Unauthorized();
+            }
+
+            var partitionKey = identityHasher.ForEmail(callerResult.Response!.Email).Value;
+            var threads = await threadStore.ListByOwnerAsync(partitionKey, ct);
+
+            return Results.Ok(threads.Select(t => new ConversationSummaryResponse(t.Id, t.DisplayName, t.LastActivityAtUtc, t.ModelId)));
+        });
+
+        app.MapGet("/api/chat/threads/{id}/messages", async (
+            string id,
+            ICurrentUserAccessor currentUser,
+            IIdentityHasher identityHasher,
+            IChatThreadStore threadStore,
+            IChatMessageStore messageStore,
+            CancellationToken ct) =>
+        {
+            var callerResult = currentUser.GetCurrentUser();
+            if (callerResult.Status != ResponseStatus.OK)
+            {
+                return Results.Unauthorized();
+            }
+
+            var partitionKey = identityHasher.ForEmail(callerResult.Response!.Email).Value;
+            var thread = await threadStore.GetAsync(id, partitionKey, ct);
+            if (thread is null)
+            {
+                return Results.NotFound();
+            }
+
+            var messages = await messageStore.ListByThreadAsync(id, partitionKey, ct);
+            return Results.Ok(messages.Select(m => new MessageResponse(m.Role.ToString(), m.Content, m.CreatedAtUtc)));
+        });
+
+        app.MapPatch("/api/chat/threads/{id}", async (
+            string id,
+            RenameThreadRequest request,
+            ICurrentUserAccessor currentUser,
+            IIdentityHasher identityHasher,
+            IChatThreadStore threadStore,
+            CancellationToken ct) =>
+        {
+            var callerResult = currentUser.GetCurrentUser();
+            if (callerResult.Status != ResponseStatus.OK)
+            {
+                return Results.Unauthorized();
+            }
+
+            var partitionKey = identityHasher.ForEmail(callerResult.Response!.Email).Value;
+            var result = await threadStore.RenameAsync(id, partitionKey, request.DisplayName, ct);
+
+            return result.Status switch
+            {
+                ResponseStatus.OK => Results.Ok(new ConversationSummaryResponse(
+                    result.Response!.Id, result.Response!.DisplayName, result.Response!.LastActivityAtUtc, result.Response!.ModelId)),
+                ResponseStatus.NOT_FOUND => Results.NotFound(),
+                _ => Results.Json(new { error = "EMPTY_NAME" }, statusCode: StatusCodes.Status400BadRequest),
+            };
+        });
+
         app.MapPost("/api/chat/threads", async (
             CreateThreadRequest request,
             ICurrentUserAccessor currentUser,
@@ -104,4 +173,10 @@ public static class ChatEndpoints
     public sealed record ThreadResponse(string Id, string Version, string ModelId);
 
     public sealed record SendMessageRequest(string Text, string ModelId);
+
+    public sealed record ConversationSummaryResponse(string Id, string DisplayName, DateTimeOffset LastActivityAtUtc, string ModelId);
+
+    public sealed record MessageResponse(string Role, string Content, DateTimeOffset CreatedAtUtc);
+
+    public sealed record RenameThreadRequest(string DisplayName);
 }

@@ -15,6 +15,7 @@ public sealed class ChatComposerState
 {
     private readonly IIdentityHasher _identityHasher;
     private readonly IChatThreadStore _threadStore;
+    private readonly IChatMessageStore _messageStore;
     private readonly IChatPipeline _chatPipeline;
     private readonly IModelAccessService _modelAccessService;
 
@@ -22,11 +23,13 @@ public sealed class ChatComposerState
         ICurrentUserAccessor currentUserAccessor,
         IIdentityHasher identityHasher,
         IChatThreadStore threadStore,
+        IChatMessageStore messageStore,
         IChatPipeline chatPipeline,
         IModelAccessService modelAccessService)
     {
         _identityHasher = identityHasher;
         _threadStore = threadStore;
+        _messageStore = messageStore;
         _chatPipeline = chatPipeline;
         _modelAccessService = modelAccessService;
 
@@ -54,8 +57,63 @@ public sealed class ChatComposerState
 
     public string? ErrorMessage { get; private set; }
 
+    /// <summary>Spec 024 US3 FR-013 — set by <see cref="SwitchToAsync"/> when the given thread doesn't resolve to one of the caller's own conversations.</summary>
+    public bool IsNotFound { get; private set; }
+
     /// <summary>Raised after every state mutation that happens mid-stream, so the component can call StateHasChanged().</summary>
     public event Action? OnChanged;
+
+    /// <summary>Spec 024 US3 FR-006 — switches to an existing conversation, loading its full history before anything is sent. Returns false if the thread doesn't resolve (see <see cref="IsNotFound"/>).</summary>
+    public async Task<bool> SwitchToAsync(string threadId, CancellationToken cancellationToken = default)
+    {
+        if (CurrentUser is null)
+        {
+            return false;
+        }
+
+        var partitionKey = _identityHasher.ForEmail(CurrentUser.Email).Value;
+        var thread = await _threadStore.GetAsync(threadId, partitionKey, cancellationToken);
+        if (thread is null)
+        {
+            // FR-013: a foreign or nonexistent thread both land here — never distinguishable.
+            IsNotFound = true;
+            ThreadId = null;
+            ModelId = null;
+            Messages.Clear();
+            ErrorMessage = null;
+            NotifyChanged();
+            return false;
+        }
+
+        ThreadId = thread.Id;
+        ModelId = thread.ModelId;
+        IsNotFound = false;
+        ErrorMessage = null;
+        Messages.Clear();
+
+        var history = await _messageStore.ListByThreadAsync(threadId, partitionKey, cancellationToken);
+        Messages.AddRange(history.Select(message => new ChatMessageViewState
+        {
+            Role = message.Role == ChatMessageRole.User ? "user" : "assistant",
+            Content = message.Content,
+            IsComplete = true,
+        }));
+
+        NotifyChanged();
+        return true;
+    }
+
+    /// <summary>Spec 024 US3 — returns to a fresh, blank conversation (Story 1's "/" contract). Synchronous — no I/O needed.</summary>
+    public void ResetToNew()
+    {
+        ThreadId = null;
+        ModelId = null;
+        IsNotFound = false;
+        ErrorMessage = null;
+        ComposerText = string.Empty;
+        Messages.Clear();
+        NotifyChanged();
+    }
 
     public async Task SendAsync(CancellationToken cancellationToken = default)
     {

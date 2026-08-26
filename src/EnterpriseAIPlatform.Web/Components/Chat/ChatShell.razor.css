@@ -1,0 +1,21 @@
+.chat-shell {
+    display: flex;
+    min-height: 100vh;
+}
+
+.chat-shell-main {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.chat-shell-not-found {
+    max-width: 480px;
+    margin: 4rem auto;
+    text-align: center;
+    color: #55606b;
+}
+
+    .chat-shell-not-found a {
+        color: #2f6fed;
+        font-weight: 600;
+    }

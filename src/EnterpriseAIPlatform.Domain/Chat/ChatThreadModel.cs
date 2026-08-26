@@ -21,6 +21,12 @@ public sealed class ChatThreadModel
 
     public DateTimeOffset CreatedAtUtc { get; set; }
 
+    /// <summary>Spec 024 US3 FR-007 — set to a creation-timestamp-based default at creation, renamable thereafter. Never empty/whitespace (enforced by <c>ConversationRenameRules</c>).</summary>
+    public required string DisplayName { get; set; }
+
+    /// <summary>Spec 024 US3 FR-005 — initialized to <see cref="CreatedAtUtc"/>, bumped on every message sent/received; drives the conversation list's most-recently-active-first order.</summary>
+    public DateTimeOffset LastActivityAtUtc { get; set; }
+
     /// <summary>Server-stored; always empty in R1 (spec 019/data products not yet built) — FR-006's override defends this real, if currently-empty, field.</summary>
     public List<string> DataProducts { get; set; } = new();
 

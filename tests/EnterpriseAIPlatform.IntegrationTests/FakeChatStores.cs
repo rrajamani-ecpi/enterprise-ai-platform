@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using EnterpriseAIPlatform.Application.Chat;
+using EnterpriseAIPlatform.Application.Common;
 using EnterpriseAIPlatform.Application.ModelAccess;
 using EnterpriseAIPlatform.Domain.Chat;
 
@@ -39,6 +40,7 @@ public sealed class FakeChatThreadStore : IChatThreadStore
             throw new InvalidOperationException($"Simulated thread-creation failure for quadrant {position}.");
         }
 
+        var createdAtUtc = DateTimeOffset.UtcNow;
         var thread = new ChatThreadModel
         {
             Id = Guid.NewGuid().ToString("n"),
@@ -46,12 +48,51 @@ public sealed class FakeChatThreadStore : IChatThreadStore
             OwnerUserId = ownerUserId,
             Version = "v3",
             ModelId = modelId,
-            CreatedAtUtc = DateTimeOffset.UtcNow,
+            CreatedAtUtc = createdAtUtc,
+            DisplayName = $"Conversation — {createdAtUtc:MMM d, yyyy h:mm tt}",
+            LastActivityAtUtc = createdAtUtc,
             MultiChatSessionId = multiChatSessionId,
             MultiChatPosition = multiChatPosition,
         };
         _threads[thread.Id] = thread;
         return Task.FromResult(thread);
+    }
+
+    public Task<IReadOnlyList<ChatThreadModel>> ListByOwnerAsync(
+        string ownerPartitionKey, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<ChatThreadModel> result = _threads.Values
+            .Where(thread => thread.PartitionKey == ownerPartitionKey)
+            .OrderByDescending(thread => thread.LastActivityAtUtc)
+            .ToList();
+        return Task.FromResult(result);
+    }
+
+    public Task<ServerActionResponse<ChatThreadModel>> RenameAsync(
+        string threadId, string ownerPartitionKey, string newDisplayName, CancellationToken cancellationToken = default)
+    {
+        if (!ConversationRenameRules.TryValidate(newDisplayName, out var trimmed))
+        {
+            return Task.FromResult(ServerActionResponse<ChatThreadModel>.Error("A conversation name cannot be empty."));
+        }
+
+        if (!_threads.TryGetValue(threadId, out var thread) || thread.PartitionKey != ownerPartitionKey)
+        {
+            return Task.FromResult(ServerActionResponse<ChatThreadModel>.NotFound("Conversation not found."));
+        }
+
+        thread.DisplayName = trimmed;
+        return Task.FromResult(ServerActionResponse<ChatThreadModel>.Ok(thread));
+    }
+
+    public Task TouchLastActivityAsync(string threadId, string ownerPartitionKey, CancellationToken cancellationToken = default)
+    {
+        if (_threads.TryGetValue(threadId, out var thread) && thread.PartitionKey == ownerPartitionKey)
+        {
+            thread.LastActivityAtUtc = DateTimeOffset.UtcNow;
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>Test-only seam so tests can plant a non-"v3" thread (US1's read-only-thread scenario).</summary>
@@ -69,6 +110,19 @@ public sealed class FakeChatMessageStore : IChatMessageStore
     {
         _messages.Add(message);
         return Task.CompletedTask;
+    }
+
+    /// <summary>Test-only seam so tests can plant message history directly (spec 024 US3).</summary>
+    public void Seed(ChatMessageModel message) => _messages.Add(message);
+
+    public Task<IReadOnlyList<ChatMessageModel>> ListByThreadAsync(
+        string threadId, string ownerPartitionKey, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<ChatMessageModel> result = _messages
+            .Where(message => message.ThreadId == threadId && message.PartitionKey == ownerPartitionKey)
+            .OrderBy(message => message.CreatedAtUtc)
+            .ToList();
+        return Task.FromResult(result);
     }
 }
 

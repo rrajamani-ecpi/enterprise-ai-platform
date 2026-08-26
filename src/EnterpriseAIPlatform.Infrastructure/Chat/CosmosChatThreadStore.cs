@@ -1,4 +1,5 @@
 using EnterpriseAIPlatform.Application.Chat;
+using EnterpriseAIPlatform.Application.Common;
 using EnterpriseAIPlatform.Domain.Chat;
 using EnterpriseAIPlatform.Infrastructure.Persistence;
 using Microsoft.Azure.Cosmos;
@@ -43,6 +44,7 @@ public sealed class CosmosChatThreadStore : IChatThreadStore
         int? multiChatPosition = null,
         CancellationToken cancellationToken = default)
     {
+        var createdAtUtc = DateTimeOffset.UtcNow;
         var thread = new ChatThreadModel
         {
             Id = Guid.NewGuid().ToString("n"),
@@ -50,7 +52,9 @@ public sealed class CosmosChatThreadStore : IChatThreadStore
             OwnerUserId = ownerUserId,
             Version = "v3",
             ModelId = modelId,
-            CreatedAtUtc = DateTimeOffset.UtcNow,
+            CreatedAtUtc = createdAtUtc,
+            DisplayName = $"Conversation — {createdAtUtc:MMM d, yyyy h:mm tt}",
+            LastActivityAtUtc = createdAtUtc,
             MultiChatSessionId = multiChatSessionId,
             MultiChatPosition = multiChatPosition,
         };
@@ -59,5 +63,59 @@ public sealed class CosmosChatThreadStore : IChatThreadStore
             ChatThreadDocument.FromModel(thread), new PartitionKey(ownerPartitionKey), cancellationToken: cancellationToken);
 
         return thread;
+    }
+
+    public async Task<IReadOnlyList<ChatThreadModel>> ListByOwnerAsync(
+        string ownerPartitionKey, CancellationToken cancellationToken = default)
+    {
+        var query = new QueryDefinition("SELECT * FROM c WHERE c.PartitionKey = @pk AND c.Type = @type")
+            .WithParameter("@pk", ownerPartitionKey)
+            .WithParameter("@type", ChatThreadDocument.DocType);
+        var options = new QueryRequestOptions { PartitionKey = new PartitionKey(ownerPartitionKey) };
+
+        var threads = new List<ChatThreadModel>();
+        using var iterator = Container.GetItemQueryIterator<ChatThreadDocument>(query, requestOptions: options);
+        while (iterator.HasMoreResults)
+        {
+            var page = await iterator.ReadNextAsync(cancellationToken);
+            threads.AddRange(page.Select(document => document.ToModel()));
+        }
+
+        return threads.OrderByDescending(thread => thread.LastActivityAtUtc).ToList();
+    }
+
+    public async Task<ServerActionResponse<ChatThreadModel>> RenameAsync(
+        string threadId, string ownerPartitionKey, string newDisplayName, CancellationToken cancellationToken = default)
+    {
+        if (!ConversationRenameRules.TryValidate(newDisplayName, out var trimmed))
+        {
+            return ServerActionResponse<ChatThreadModel>.Error("A conversation name cannot be empty.");
+        }
+
+        var thread = await GetAsync(threadId, ownerPartitionKey, cancellationToken);
+        if (thread is null)
+        {
+            return ServerActionResponse<ChatThreadModel>.NotFound("Conversation not found.");
+        }
+
+        thread.DisplayName = trimmed;
+        await Container.UpsertItemAsync(
+            ChatThreadDocument.FromModel(thread), new PartitionKey(ownerPartitionKey), cancellationToken: cancellationToken);
+
+        return ServerActionResponse<ChatThreadModel>.Ok(thread);
+    }
+
+    public async Task TouchLastActivityAsync(
+        string threadId, string ownerPartitionKey, CancellationToken cancellationToken = default)
+    {
+        var thread = await GetAsync(threadId, ownerPartitionKey, cancellationToken);
+        if (thread is null)
+        {
+            return;
+        }
+
+        thread.LastActivityAtUtc = DateTimeOffset.UtcNow;
+        await Container.UpsertItemAsync(
+            ChatThreadDocument.FromModel(thread), new PartitionKey(ownerPartitionKey), cancellationToken: cancellationToken);
     }
 }
