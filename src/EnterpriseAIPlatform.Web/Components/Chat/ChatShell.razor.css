@@ -1,6 +1,7 @@
 .chat-shell {
     display: flex;
     min-height: 100vh;
+    background: var(--color-bg);
 }
 
 .chat-shell-main {
@@ -12,10 +13,15 @@
     max-width: 480px;
     margin: 4rem auto;
     text-align: center;
-    color: #55606b;
+    color: var(--color-text-muted);
 }
 
     .chat-shell-not-found a {
-        color: #2f6fed;
+        color: var(--color-primary);
         font-weight: 600;
+        text-decoration: none;
     }
+
+        .chat-shell-not-found a:hover {
+            text-decoration: underline;
+        }

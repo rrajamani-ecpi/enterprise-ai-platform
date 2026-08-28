@@ -47,20 +47,26 @@ public sealed class AzureFoundryChatCompletionClient : IChatCompletionClient
         }
 
         using var response = await _httpClient.SendAsync(
-            httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            httpRequest, HttpCompletionOption.ResponseContentRead, cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var reader = new StreamReader(stream);
-        string? line;
-        while ((line = await reader.ReadLineAsync(cancellationToken)) is not null)
+        // The Responses API is called here without "stream": true, so the body is one complete
+        // JSON object rather than SSE chunks — route it through the adapter's response contract
+        // (the same contract non-streaming callers use) instead of yielding raw bytes/lines.
+        var payload = await response.Content.ReadFromJsonAsync<Dictionary<string, object?>>(cancellationToken)
+            ?? new Dictionary<string, object?>();
+
+        var chatResponse = await _adapter.AdaptResponseAsync(
+            new ProviderResponse(Provider, payload), model, cancellationToken);
+
+        if (chatResponse.IsError)
         {
-            if (!string.IsNullOrWhiteSpace(line))
-            {
-                yield return line;
-            }
+            throw new InvalidOperationException(
+                chatResponse.ErrorMessage ?? "The model provider returned an error.");
         }
+
+        yield return chatResponse.Content;
     }
 
-    private string BuildUrl() => $"{_options.Endpoint?.TrimEnd('/')}/openai/responses?api-version=2024-09-01";
+    private string BuildUrl() => $"{_options.Endpoint?.TrimEnd('/')}/openai/responses?api-version=2025-04-01-preview";
 }

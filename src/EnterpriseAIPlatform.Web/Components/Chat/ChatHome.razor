@@ -14,7 +14,7 @@
 
     <ChatComposer @bind-ComposerText="State.ComposerText"
                   IsStreaming="State.IsStreaming"
-                  ErrorMessage="State.ErrorMessage"
+                  ErrorMessage="@State.ErrorMessage"
                   OnSend="SendAsync" />
 </div>
 

@@ -22,14 +22,14 @@
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="*" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="*" />
     <PackageReference Include="Microsoft.Identity.Web" Version="*" />
+    <!-- Microsoft.Azure.Cosmos loads this at runtime even though nothing here calls it directly. -->
+    <PackageReference Include="Newtonsoft.Json" Version="*" />
   </ItemGroup>
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <!-- Cosmos SDK 3.x uses its bundled Newtonsoft serializer internally; we don't reference it directly. -->
-    <AzureCosmosDisableNewtonsoftJsonCheck>true</AzureCosmosDisableNewtonsoftJsonCheck>
   </PropertyGroup>
 
 </Project>
