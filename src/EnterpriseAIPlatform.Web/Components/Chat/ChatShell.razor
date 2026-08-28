@@ -1,22 +1,18 @@
 @inject ChatComposerState ComposerState
 
-<div class="chat-shell">
-    <ConversationList />
-
-    <div class="chat-shell-main">
-        @if (ComposerState.IsNotFound)
-        {
-            <div class="chat-shell-not-found">
-                <p>This conversation could not be found.</p>
-                <a href="/">Start a new conversation</a>
-            </div>
-        }
-        else
-        {
-            <ChatHome />
-        }
-    </div>
-</div>
+<AppShell>
+    @if (ComposerState.IsNotFound)
+    {
+        <div class="chat-shell-not-found">
+            <p>This conversation could not be found.</p>
+            <a href="/">Start a new conversation</a>
+        </div>
+    }
+    else
+    {
+        <ChatHome />
+    }
+</AppShell>
 
 @code {
     /// <summary>Route-supplied conversation id (spec 024 US3); null when hosted from "/" (a fresh conversation).</summary>

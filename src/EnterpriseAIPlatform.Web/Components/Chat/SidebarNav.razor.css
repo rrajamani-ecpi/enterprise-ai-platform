@@ -1,0 +1,27 @@
+.sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.75rem 0.75rem 0;
+}
+
+.sidebar-nav-link {
+    display: block;
+    padding: 0.5rem 0.6rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+    .sidebar-nav-link:hover {
+        background: rgba(0, 0, 0, 0.04);
+        color: var(--color-text);
+    }
+
+    .sidebar-nav-link.active {
+        background: var(--color-primary-soft);
+        color: var(--color-primary);
+    }

@@ -20,6 +20,13 @@
 - Q: What order should a user's conversation list be shown in? → A: Most-recently-active first (sending/receiving a message bumps it to the top)
 - Q: What is a conversation's default label before it's renamed? → A: Based on creation timestamp (e.g. "Conversation — Aug 26, 2026 3:41 PM")
 
+### Session 2026-08-28
+
+- Q: How does a user navigate to the Multi-Chat comparison view (Story 4) from the existing chat interface? → A: A persistent "Compare" link/icon in the same sidebar that hosts the conversation list (Story 3)
+- Q: When a user opens the comparison view for the first time (no prior persisted multi-chat session), how many panes appear by default? → A: 2 panes (the enforced minimum), both unassigned
+- Q: How does a user reach the changelog view (Story 5)? → A: Another persistent link in the same sidebar (peer to "Compare" and the conversation list)
+- Q: Is the version-update notice (Story 5) a global banner shown across every page, or scoped to specific screens? → A: Global banner in the persistent app shell, visible on every authenticated page
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Sign in and land on a working chat home (Priority: P1)
@@ -82,7 +89,7 @@ A user opens a multi-way comparison view, assigns a different model to each of s
 
 **Acceptance Scenarios**:
 
-1. **Given** the comparison view is open with its default panes, **When** the user assigns a model to a pane, **Then** that assignment is reflected in the pane and persists across a page reload.
+1. **Given** the comparison view is open with its default panes (2 unassigned panes, for a user with no prior persisted multi-chat session), **When** the user assigns a model to a pane, **Then** that assignment is reflected in the pane and persists across a page reload.
 2. **Given** two or more panes each have a model assigned, **When** the user types one message and sends it, **Then** the same message is dispatched to every assigned pane without needing to be retyped.
 3. **Given** responses are streaming into multiple panes, **When** one pane's response is slower than another's, **Then** the faster pane's response completes and displays without waiting for the slower one.
 4. **Given** one pane's send fails, **When** the failure occurs, **Then** that pane shows a clear error while the other panes continue to stream normally.
@@ -124,10 +131,10 @@ A user opens a changelog view to see what has changed recently, and separately n
 - **FR-005**: The system MUST provide a way for a user to list their own conversations, ordered most-recently-active first (a conversation's activity time updates whenever a message is sent or received in it), and MUST NOT include any other user's conversations in that list.
 - **FR-006**: Users MUST be able to select a conversation from their list and continue it, with its prior messages rendered before they send anything new.
 - **FR-007**: Every conversation MUST be assigned a default display name at creation, based on its creation timestamp (e.g. "Conversation — Aug 26, 2026 3:41 PM"), before any rename occurs. Users MUST be able to rename one of their own conversations; the new name MUST persist and MUST be rejected if empty or whitespace-only, leaving the prior name in effect.
-- **FR-008**: The system MUST provide a multi-pane comparison view where each pane can be independently assigned a model, honoring the same minimum/maximum pane-count rules already enforced by the underlying session (removing a pane at the minimum clears its assignment rather than removing the pane; adding beyond the maximum is refused).
+- **FR-008**: The system MUST provide a multi-pane comparison view, reachable via a persistent "Compare" navigation entry in the same sidebar that hosts the conversation list (Story 3), where each pane can be independently assigned a model, honoring the same minimum/maximum pane-count rules already enforced by the underlying session (removing a pane at the minimum clears its assignment rather than removing the pane; adding beyond the maximum is refused).
 - **FR-009**: WHEN a user sends one message from the comparison view, THE SYSTEM MUST dispatch it to every pane with an assigned model and MUST render each pane's response independently as it arrives, such that one pane's latency or failure never delays or blocks another pane's response from displaying.
-- **FR-010**: The system MUST provide a changelog view showing available entries newest-first, and MUST show a defined empty state (not an error) when no entries are available.
-- **FR-011**: WHEN a newer changelog version exists than the user has acknowledged, THE SYSTEM MUST show a dismissible notice; dismissing it MUST be recorded so the same notice does not reappear immediately on the next visit.
+- **FR-010**: The system MUST provide a changelog view, reachable via a persistent link in the same sidebar as the "Compare" entry and the conversation list, showing available entries newest-first, and MUST show a defined empty state (not an error) when no entries are available.
+- **FR-011**: WHEN a newer changelog version exists than the user has acknowledged, THE SYSTEM MUST show a dismissible notice as a global banner in the persistent app shell, visible on every authenticated page; dismissing it MUST be recorded so the same notice does not reappear immediately on the next visit.
 - **FR-012**: A conversation's message transcript, once partially received, MUST remain visible to the user even if the connection is interrupted before the response completes, and the interruption MUST be visually distinguishable from a normally-completed response.
 - **FR-013**: Navigating to a conversation the current user does not own (or that does not exist) MUST show a clear not-found state and MUST NOT reveal any content belonging to another user.
 

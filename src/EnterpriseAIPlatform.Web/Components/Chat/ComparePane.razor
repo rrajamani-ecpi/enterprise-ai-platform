@@ -1,0 +1,41 @@
+@inject CompareSessionState State
+
+<div class="compare-pane">
+    <div class="compare-pane-header">
+        <select class="compare-pane-model-select" value="@Pane.ModelId" @onchange="OnModelChangedAsync">
+            <option value="">Select a model…</option>
+            @foreach (var model in State.AvailableModels)
+            {
+                <option value="@model.Id">@model.DisplayName</option>
+            }
+        </select>
+    </div>
+
+    @if (Pane.ModelId is null)
+    {
+        <p class="compare-pane-empty">Assign a model to send messages to this pane.</p>
+    }
+    else
+    {
+        <ChatTranscript Messages="Pane.Messages" />
+    }
+
+    @if (Pane.ErrorMessage is not null)
+    {
+        <p class="compare-pane-error" role="alert">@Pane.ErrorMessage</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ComparePaneViewState Pane { get; set; } = null!;
+
+    private async Task OnModelChangedAsync(ChangeEventArgs e)
+    {
+        var modelId = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(modelId))
+        {
+            await State.AssignModelAsync(Pane.Position, modelId);
+        }
+    }
+}

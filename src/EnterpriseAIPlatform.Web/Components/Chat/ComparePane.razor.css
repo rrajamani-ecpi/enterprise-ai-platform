@@ -1,0 +1,43 @@
+.compare-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 320px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg);
+    overflow: hidden;
+}
+
+.compare-pane-header {
+    padding: 0.5rem 0.6rem;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.compare-pane-model-select {
+    width: 100%;
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.35rem 0.4rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border);
+}
+
+.compare-pane-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-muted);
+    font-style: italic;
+    font-size: 0.85rem;
+    padding: 1rem;
+    text-align: center;
+}
+
+.compare-pane-error {
+    margin: 0;
+    padding: 0.5rem 0.6rem;
+    color: var(--color-danger);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--color-border);
+}

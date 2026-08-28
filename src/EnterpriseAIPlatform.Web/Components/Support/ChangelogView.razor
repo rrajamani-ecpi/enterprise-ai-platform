@@ -1,0 +1,33 @@
+@using EnterpriseAIPlatform.Application.Support
+@using EnterpriseAIPlatform.Domain.Support
+@inject IChangelogReader Reader
+
+<div class="changelog-view">
+    @if (_entries is null)
+    {
+        <p>Loading…</p>
+    }
+    else if (_entries.Count == 0)
+    {
+        <p class="changelog-empty">No changelog entries are available yet.</p>
+    }
+    else
+    {
+        @foreach (var entry in _entries)
+        {
+            <article class="changelog-entry">
+                <h3 class="changelog-entry-version">@entry.Version</h3>
+                <p class="changelog-entry-content">@entry.Content</p>
+            </article>
+        }
+    }
+</div>
+
+@code {
+    private IReadOnlyList<ChangelogEntry>? _entries;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _entries = await Reader.GetEntriesAsync();
+    }
+}

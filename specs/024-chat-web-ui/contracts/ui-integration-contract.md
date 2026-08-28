@@ -1,4 +1,4 @@
-# UI Integration Contract: Chat Web UI (Stories 1–3)
+# UI Integration Contract: Chat Web UI (Stories 1–5)
 
 This feature introduces no new HTTP endpoints. Its "contract" is the set of existing Application-layer interfaces the chat home component/state consumes, and the exact call sequence — documented here so the sequence is verifiable independent of implementation.
 
@@ -65,3 +65,60 @@ Repeats steps 2, 4–7 above with the existing `ThreadId`/`ModelId` (step 3 is s
    - `ERROR` (empty/whitespace after trim) → `RenameErrorMessage` set, edit field stays open with the prior name restored (per Edge Cases: "leaving the previous name in place").
    - `NOT_FOUND` → treated the same as `ERROR` for display purposes (this thread disappeared from under the user — an edge case, not a named acceptance scenario).
 4. On Escape: discard the edit, no call made.
+
+## Stories 4–5: additional consumed interfaces
+
+| Interface | Method | Source spec | File |
+|---|---|---|---|
+| `IMultiChatSessionStore` | `GetOrCreateAsync(ownerPartitionKey, ownerUserId, ct) : Task<MultiChatSession>` | 006 | `Application/Chat/IMultiChatSessionStore.cs` |
+| `IMultiChatSessionStore` | `AddQuadrantAsync(ownerPartitionKey, ct) : Task<ServerActionResponse<MultiChatSession>>` | 006 | same |
+| `IMultiChatSessionStore` | `RemoveQuadrantAsync(ownerPartitionKey, ct) : Task<MultiChatSession>` | 006 | same |
+| `IMultiChatSessionStore` | `AssignModelAsync(ownerPartitionKey, position, modelId, ct) : Task<MultiChatSession>` | 006 | same |
+| `MultiChatDispatcher` (concrete class, no interface) | `DispatchAsync(UserModel caller, MultiChatSession session, string text, ct) : IAsyncEnumerable<QuadrantEvent>` | 006 | `Infrastructure/Chat/MultiChatDispatcher.cs` |
+| `IChatMessageStore` | `ListByThreadAsync(threadId, ownerPartitionKey, ct)` (Story 3 capability, reused for pane history reload) | 024/Story 3 | `Application/Chat/IChatMessageStore.cs` |
+| `IChangelogReader` | `GetEntriesAsync(ct) : Task<IReadOnlyList<ChangelogEntry>>` | 017 | `Application/Support/IChangelogReader.cs` |
+| `IVersionAcknowledgmentStore` | `GetAsync(ownerPartitionKey, ct) : Task<VersionAcknowledgmentModel?>` | 017 | `Application/Support/IVersionAcknowledgmentStore.cs` |
+| `IVersionAcknowledgmentStore` | `SetAsync(ownerPartitionKey, acknowledgedVersion, ct) : Task` | 017 | same |
+| `AlertWindowEvaluator` (static) | `ShouldShowAlert(latest, acknowledgment, now) : bool` | 017 | `Application/Support/AlertWindowEvaluator.cs` |
+
+## Stories 4–5: call sequence — opening the comparison view (`/compare`)
+
+1. `Compare.razor` → `AppShell` → `CompareBoard.razor` triggers `CompareSessionState.InitializeAsync()`.
+2. `IMultiChatSessionStore.GetOrCreateAsync(partitionKey, ownerUserId, ct)` — returns the caller's existing session, or creates one seeded with 2 unassigned quadrants (pre-existing store behavior; see research.md).
+3. `IModelAccessService.GetAvailableModelsAsync(caller)` loads `AvailableModels` for the model-picker options (shared across all panes).
+4. For each quadrant with a non-null `ThreadId`, `IChatMessageStore.ListByThreadAsync(threadId, partitionKey, ct)` loads that pane's prior transcript (each message `IsComplete = true`).
+5. `Panes` is projected from `session.Quadrants`, in `Position` order.
+
+## Stories 4–5: call sequence — adding/removing a pane
+
+1. User clicks add/remove in `CompareBoard.razor`.
+2. Add: `IMultiChatSessionStore.AddQuadrantAsync(partitionKey, ct)` → `ServerActionResponse.Error` (at 4-pane cap) sets `PaneErrorMessage` (AC5); `OK` refreshes `Panes` from the returned session.
+3. Remove: `IMultiChatSessionStore.RemoveQuadrantAsync(partitionKey, ct)` → always succeeds; at the 2-pane floor the store clears that quadrant's assignment instead of removing it (pre-existing store behavior) — `Panes` refreshed from the returned session either way.
+
+## Stories 4–5: call sequence — assigning a model to a pane
+
+1. User picks a model from a pane's dropdown (options = `CompareSessionState.AvailableModels`).
+2. `IMultiChatSessionStore.AssignModelAsync(partitionKey, position, modelId, ct)` → `Panes[position]` updated from the returned session. No separate validation call — an invalid `ModelId` cannot be selected since the dropdown only ever offers `AvailableModels` (research.md).
+
+## Stories 4–5: call sequence — sending one message to all assigned panes
+
+1. User types into the shared composer and sends while `IsSending == false`.
+2. `IsSending = true`; each pane with a non-null `ModelId` gets a new empty in-progress `ChatMessageViewState` appended to its `Messages`. A pane with `ModelId == null` instead shows an inline "no model assigned" indicator and is never dispatched to (Edge Cases).
+3. `MultiChatDispatcher.DispatchAsync(caller, session, text, ct)` is called once; `await foreach` over the returned `IAsyncEnumerable<QuadrantEvent>`:
+   - `Chunk` → append `Content` to `Panes[event.Position]`'s in-progress message; `StateHasChanged()`.
+   - `Error` → set `Panes[event.Position].ErrorMessage`; mark that pane's in-progress message `IsComplete = true`. Other panes are unaffected (FR-009/AC4).
+   - `Done` → mark that pane's message `IsComplete = true`.
+4. `IsSending = false` once every dispatched pane has reached `Done` or `Error` (the dispatcher's `IAsyncEnumerable` completes).
+
+## Stories 4–5: call sequence — the update banner (every authenticated page load, via `MainLayout.razor`)
+
+1. `UpdateBannerState.InitializeAsync()`: `IChangelogReader.GetEntriesAsync(ct)` → `latest = entries.FirstOrDefault()`; `IVersionAcknowledgmentStore.GetAsync(partitionKey, ct)` → `acknowledgment` (`null` for a brand-new user).
+2. `ShowAlert = AlertWindowEvaluator.ShouldShowAlert(latest, acknowledgment, DateTimeOffset.UtcNow)`; `LatestVersion = latest?.Version.ToString()`.
+3. `UpdateBanner.razor` renders iff `ShowAlert && !IsDismissed`.
+4. On dismiss: `IsDismissed = true` immediately (optimistic); `IVersionAcknowledgmentStore.SetAsync(partitionKey, LatestVersion, ct)`. On exception, `IsDismissed = false` (banner reappears) — mirrors `SupportEndpoints.cs`'s own "a failed persist must never look like success" comment (FR-011, Constitution Principle III).
+
+## Stories 4–5: call sequence — the changelog view (`/changelog`)
+
+1. `Changelog.razor` → `AppShell` → `ChangelogView.razor` calls `IChangelogReader.GetEntriesAsync(ct)` on init.
+2. Non-empty → rendered newest-first (already returned in that order by `FileSystemChangelogReader`, per spec 017's data-model.md). Empty → the defined empty state (AC2).
+3. Opening this view does **not** itself acknowledge the latest version — only dismissing the `UpdateBanner` does (FR-011 refers to dismissing the notice, not viewing the changelog).

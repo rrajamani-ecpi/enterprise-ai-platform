@@ -1,0 +1,26 @@
+.changelog-view {
+    max-width: 720px;
+    margin: 2rem auto;
+    padding: 0 1.5rem;
+}
+
+.changelog-empty {
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
+.changelog-entry {
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.changelog-entry-version {
+    margin: 0 0 0.4rem;
+    font-size: 1.05rem;
+}
+
+.changelog-entry-content {
+    margin: 0;
+    color: var(--color-text);
+    white-space: pre-wrap;
+}

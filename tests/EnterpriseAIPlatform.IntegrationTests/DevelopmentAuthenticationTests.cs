@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using EnterpriseAIPlatform.Application.Chat;
+using EnterpriseAIPlatform.Application.Support;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -61,10 +62,15 @@ public sealed class DevelopmentAuthenticationTests
 
             // Rendering "/" now loads the spec 024 US3 conversation sidebar, which needs
             // IChatThreadStore — swap in the fake so this test doesn't need a live Cosmos DB.
+            // It also now loads the spec 024 US5 global update banner (MainLayout), which needs
+            // IVersionAcknowledgmentStore — same reasoning, same fix.
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IChatThreadStore>();
                 services.AddSingleton<IChatThreadStore>(new FakeChatThreadStore());
+
+                services.RemoveAll<IVersionAcknowledgmentStore>();
+                services.AddSingleton<IVersionAcknowledgmentStore>(new FakeVersionAcknowledgmentStore());
             });
         }
     }
