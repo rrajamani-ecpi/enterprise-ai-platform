@@ -5,6 +5,13 @@
 @implements IDisposable
 
 <nav class="conversation-list">
+    <div class="conversation-list-header">
+        <span class="conversation-list-title">Chats</span>
+        <button type="button" class="conversation-list-new" title="New chat" @onclick="StartNew">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+            New chat
+        </button>
+    </div>
     @if (ListState.LoadErrorMessage is not null)
     {
         <p class="conversation-list-load-error" role="alert">@ListState.LoadErrorMessage</p>
@@ -62,6 +69,8 @@
     }
 
     private void Select(string threadId) => Navigation.NavigateTo($"/chat/{threadId}");
+
+    private void StartNew() => Navigation.NavigateTo("/");
 
     private void BeginRename(ChatThreadModel conversation)
     {

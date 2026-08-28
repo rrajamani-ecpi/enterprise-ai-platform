@@ -3,23 +3,36 @@
 <div class="chat-transcript">
     @if (Messages.Count == 0)
     {
-        <p class="chat-transcript-empty">Start typing below to begin a new conversation.</p>
+        <div class="chat-transcript-empty">
+            <svg class="chat-transcript-empty-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8A2.5 2.5 0 0 1 17.5 16H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-8Z"
+                      stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+            </svg>
+            <p>Start typing below to begin a new conversation.</p>
+        </div>
     }
     else
     {
         @foreach (var message in Messages)
         {
-            <div class="chat-message chat-message-@message.Role">
-                <span class="chat-message-role">@(message.Role == "user" ? "You" : "Assistant")</span>
-                <p class="chat-message-content">@message.Content</p>
-                @if (!message.IsComplete)
-                {
-                    <span class="chat-message-status chat-message-streaming">Streaming…</span>
-                }
-                else if (message.IsInterrupted)
-                {
-                    <span class="chat-message-status chat-message-interrupted">Interrupted</span>
-                }
+            <div class="chat-message-row chat-message-row-@message.Role">
+                <div class="chat-message-avatar chat-message-avatar-@message.Role">@(message.Role == "user" ? "Y" : "A")</div>
+                <div class="chat-message chat-message-@message.Role">
+                    <span class="chat-message-role">@(message.Role == "user" ? "You" : "Assistant")</span>
+                    <p class="chat-message-content">@message.Content</p>
+                    @if (!message.IsComplete)
+                    {
+                        <span class="chat-message-status chat-message-streaming">
+                            <span class="chat-message-typing-dot"></span>
+                            <span class="chat-message-typing-dot"></span>
+                            <span class="chat-message-typing-dot"></span>
+                        </span>
+                    }
+                    else if (message.IsInterrupted)
+                    {
+                        <span class="chat-message-status chat-message-interrupted">Interrupted</span>
+                    }
+                </div>
             </div>
         }
     }

@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Azure.Core;
 using Azure.Identity;
 using EnterpriseAIPlatform.Application.ModelAccess;
@@ -50,17 +52,49 @@ public sealed class AzureFoundryProviderAdapter : IModelProviderAdapter
     public Task<ChatResponse> AdaptResponseAsync(
         ProviderResponse response, ModelConfigDocument model, CancellationToken cancellationToken = default)
     {
+        // Responses API shape: the assistant's text lives at output[].content[].text for each
+        // output item of type "message" (other item types include reasoning/tool calls, which
+        // this R1 integration doesn't surface) — there is no top-level "output_text" string.
         if (response.IsError
-            || !response.Payload.TryGetValue("output_text", out var text)
-            || text is not string content)
+            || !response.Payload.TryGetValue("output", out var outputObj)
+            || outputObj is not JsonElement outputElement
+            || outputElement.ValueKind != JsonValueKind.Array)
         {
-            // Normalize any provider-specific error/unexpected shape into one consistent shape
-            // rather than leaking it to the caller (Edge Cases).
             return Task.FromResult(new ChatResponse(
                 string.Empty, IsError: true, ErrorMessage: "The model provider returned an unexpected or error response."));
         }
 
-        return Task.FromResult(new ChatResponse(content, IsError: false));
+        var text = new StringBuilder();
+        foreach (var outputItem in outputElement.EnumerateArray())
+        {
+            if (!outputItem.TryGetProperty("type", out var itemType) || itemType.GetString() != "message")
+            {
+                continue;
+            }
+
+            if (!outputItem.TryGetProperty("content", out var contentArray) || contentArray.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var contentItem in contentArray.EnumerateArray())
+            {
+                if (contentItem.TryGetProperty("type", out var contentType)
+                    && contentType.GetString() == "output_text"
+                    && contentItem.TryGetProperty("text", out var textProperty))
+                {
+                    text.Append(textProperty.GetString());
+                }
+            }
+        }
+
+        if (text.Length == 0)
+        {
+            return Task.FromResult(new ChatResponse(
+                string.Empty, IsError: true, ErrorMessage: "The model provider returned an unexpected or error response."));
+        }
+
+        return Task.FromResult(new ChatResponse(text.ToString(), IsError: false));
     }
 
     private static string ModelIdWithoutProviderPrefix(string canonicalId)
