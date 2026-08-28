@@ -1,14 +1,3 @@
-.chat-shell {
-    display: flex;
-    min-height: 100vh;
-    background: var(--color-bg);
-}
-
-.chat-shell-main {
-    flex: 1;
-    overflow-y: auto;
-}
-
 .chat-shell-not-found {
     max-width: 480px;
     margin: 4rem auto;

@@ -1,0 +1,31 @@
+@inject UpdateBannerState State
+@implements IDisposable
+
+@if (State.ShowAlert && !State.IsDismissed)
+{
+    <div class="update-banner" role="alert">
+        <span class="update-banner-text">
+            A new version (@State.LatestVersion) is available. <a href="/changelog">See what's new</a>.
+        </span>
+        <button type="button" class="update-banner-dismiss" @onclick="DismissAsync" aria-label="Dismiss">🗙</button>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        State.OnChanged += StateHasChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await State.InitializeAsync();
+    }
+
+    private async Task DismissAsync() => await State.DismissAsync();
+
+    public void Dispose()
+    {
+        State.OnChanged -= StateHasChanged;
+    }
+}

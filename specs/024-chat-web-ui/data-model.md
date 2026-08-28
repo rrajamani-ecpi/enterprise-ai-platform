@@ -1,4 +1,4 @@
-# Phase 1 Data Model: Chat Web UI (Stories 1–3)
+# Phase 1 Data Model: Chat Web UI (Stories 1–5)
 
 No new persisted entities are introduced by this slice — all persistence continues through spec 004's existing `ChatThreadModel` / `ChatMessageModel` via `IChatThreadStore` / `IChatPipeline`. This slice only adds **client-side, per-circuit view-state** that lives in Blazor component/service memory and is discarded when the circuit ends (page reload restarts Story 2 with a fresh empty composer — full history reload across page loads is Story 3, deferred).
 
@@ -68,3 +68,43 @@ Methods: `LoadConversationsAsync()`, `RenameAsync(threadId, newName)` (calls `IC
 
 - `IChatThreadStore.GetAsync` — reused as-is for `SwitchToAsync`'s ownership-scoped lookup and as the first half of `RenameAsync`'s read-modify-write.
 - `ServerActionResponse<T>` (`Application/Common`) — `RenameAsync`'s return shape (`OK`/`NotFound`/`Error`), same envelope used throughout specs 002/004/006/014.
+
+## Stories 4–5 additions
+
+No new persisted entities. All state below is client-side, per-circuit view-state (same nature as `ChatComposerState`/`ConversationListState`); all persistence continues through spec 006's existing `MultiChatSession` Cosmos doc and spec 017's existing `VersionAcknowledgmentModel` Cosmos doc / file-system-backed `ChangelogEntry` reads.
+
+### `CompareSessionState` (new, Web-layer, scoped per circuit)
+
+| Field | Type | Notes |
+|---|---|---|
+| `Panes` | `List<ComparePaneViewState>` | Projected from `MultiChatSession.Quadrants` on load; one entry per quadrant, in `Position` order. |
+| `AvailableModels` | `IReadOnlyList<ModelConfigDocument>` | Loaded once via `IModelAccessService.GetAvailableModelsAsync`; source of every pane's model-picker options (research.md). |
+| `ComposerText` | `string` | Single shared composer, bound in `CompareBoard.razor`. |
+| `IsSending` | `bool` | `true` from `SendToAllAsync` start until every dispatched pane's stream reaches `Done`/`Error`; disables the shared send action while `true`. |
+| `PaneErrorMessage` | `string?` | Set when `AddQuadrantAsync`/`RemoveQuadrantAsync` is refused (cap/floor) or fails; cleared on the next successful pane-count change. |
+
+### `ComparePaneViewState` (new, Web-layer)
+
+| Field | Type | Notes |
+|---|---|---|
+| `Position` | `int` | Mirrors `MultiChatQuadrant.Position` (0-based). |
+| `ModelId` | `string?` | Mirrors `MultiChatQuadrant.ModelId`; `null` = unassigned — drives the "nothing to send to" indicator (Edge Cases). |
+| `ModelDisplayName` | `string?` | Looked up from `CompareSessionState.AvailableModels` for display; `null` when `ModelId` is `null`. |
+| `ThreadId` | `string?` | Mirrors `MultiChatQuadrant.ThreadId`; set once the dispatcher creates a thread for this quadrant on first send. |
+| `Messages` | `List<ChatMessageViewState>` | Reuses the existing `ChatMessageViewState` type/shape (Stories 1–2) unchanged — lets `ComparePane.razor` reuse `ChatTranscript.razor` directly with no new render component. |
+| `ErrorMessage` | `string?` | Set when this pane's `QuadrantEvent.Kind == Error` arrives; does not affect other panes. |
+
+### `UpdateBannerState` (new, Web-layer, scoped per circuit)
+
+| Field | Type | Notes |
+|---|---|---|
+| `ShowAlert` | `bool` | Set from `AlertWindowEvaluator.ShouldShowAlert(latest, acknowledgment, now)` on init. |
+| `LatestVersion` | `string?` | The latest `ChangelogEntry.Version.ToString()`, used in the banner text and as the value persisted on dismiss. |
+| `IsDismissed` | `bool` | Set optimistically by `DismissAsync` before the persist call resolves; reverted to `false` if `IVersionAcknowledgmentStore.SetAsync` throws (Constitution Principle III). |
+
+## Reused existing entities (Stories 4–5, no changes)
+
+- `MultiChatSession` / `MultiChatQuadrant` (`Domain/Chat`, spec 006) — read via `IMultiChatSessionStore.GetOrCreateAsync`; quadrant count invariant `[2, 4]` enforced entirely by the existing `MultiChatQuadrantRules`, never re-validated in the UI layer.
+- `QuadrantEvent` (`Domain/Chat`, spec 006) — `MultiChatDispatcher.DispatchAsync`'s streamed event type; consumed as-is by `CompareSessionState.SendToAllAsync`.
+- `ChangelogEntry` / `VersionAcknowledgmentModel` (`Domain/Support`, spec 017) — read via `IChangelogReader.GetEntriesAsync` / `IVersionAcknowledgmentStore.GetAsync`/`SetAsync`.
+- `ModelConfigDocument` (`Domain/ModelAccess`, spec 014) — same type Stories 1–2 already consume for default-model resolution, reused here for the per-pane picker's options.

@@ -1,0 +1,56 @@
+@inject CompareSessionState State
+@implements IDisposable
+
+<div class="compare-board">
+    <div class="compare-board-toolbar">
+        <button type="button" class="compare-board-add-pane" @onclick="AddPaneAsync">+ Add pane</button>
+        <button type="button" class="compare-board-remove-pane" @onclick="RemovePaneAsync">− Remove pane</button>
+        @if (State.PaneErrorMessage is not null)
+        {
+            <span class="compare-board-pane-error" role="alert">@State.PaneErrorMessage</span>
+        }
+    </div>
+
+    <div class="compare-board-grid">
+        @foreach (var pane in State.Panes)
+        {
+            <ComparePane Pane="pane" @key="pane.Position" />
+        }
+    </div>
+
+    <div class="compare-board-composer">
+        <textarea class="compare-board-input"
+                   value="@State.ComposerText"
+                   @oninput="OnComposerInput"
+                   disabled="@State.IsSending"
+                   placeholder="Send one message to every assigned pane…"></textarea>
+        <button type="button" class="compare-board-send" @onclick="SendAsync" disabled="@(State.IsSending || string.IsNullOrWhiteSpace(State.ComposerText))">
+            Send
+        </button>
+    </div>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        State.OnChanged += StateHasChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await State.InitializeAsync();
+    }
+
+    private void OnComposerInput(ChangeEventArgs e) => State.ComposerText = e.Value?.ToString() ?? string.Empty;
+
+    private async Task AddPaneAsync() => await State.AddPaneAsync();
+
+    private async Task RemovePaneAsync() => await State.RemovePaneAsync();
+
+    private async Task SendAsync() => await State.SendToAllAsync();
+
+    public void Dispose()
+    {
+        State.OnChanged -= StateHasChanged;
+    }
+}

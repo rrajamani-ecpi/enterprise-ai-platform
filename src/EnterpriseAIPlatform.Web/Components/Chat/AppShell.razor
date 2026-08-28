@@ -1,0 +1,16 @@
+<div class="chat-shell">
+    <div class="chat-shell-sidebar">
+        <SidebarNav />
+        <ConversationList />
+    </div>
+
+    <div class="chat-shell-main">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    /// <summary>The active screen's content — <c>ChatHome</c>/not-found (via <see cref="ChatShell"/>), <c>CompareBoard</c>, or <c>ChangelogView</c>.</summary>
+    [Parameter, EditorRequired]
+    public RenderFragment? ChildContent { get; set; }
+}

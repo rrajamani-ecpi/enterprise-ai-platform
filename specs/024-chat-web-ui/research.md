@@ -1,6 +1,6 @@
 # Phase 0 Research: Chat Web UI (Stories 1–3)
 
-Scope note: this research originally covered only User Story 1 (sign-in/chat home) and User Story 2 (start conversation, streaming reply). The "Story 3" section below was added in a follow-on pass covering User Story 3 (conversation list, switch, rename). Stories 4–5 (multi-pane compare, changelog) remain deferred to a later plan pass and are not researched here.
+Scope note: this research originally covered only User Story 1 (sign-in/chat home) and User Story 2 (start conversation, streaming reply). The "Story 3" section below was added in a follow-on pass covering User Story 3 (conversation list, switch, rename). The "Stories 4–5" section was added in a second follow-on pass covering User Story 4 (multi-pane comparison) and User Story 5 (changelog + version-update banner).
 
 ## Decision: Component calls existing Application-layer services directly, not the HTTP/SSE endpoints
 
@@ -106,3 +106,53 @@ Scope note: this research originally covered only User Story 1 (sign-in/chat hom
 **Decision**: The conversation list is a persistent sidebar (`ConversationList.razor` inside `ChatShell.razor`), always visible alongside the active composer/transcript. Renaming is inline: click the name in the list, it becomes an editable field in place, Enter/blur saves, Escape cancels.
 
 **Rationale**: Confirmed directly with the user — persistent sidebar over a separate list page (fewer clicks to switch, standard chat-app pattern); inline edit over a modal (faster, no extra UI chrome) for renaming.
+
+## Stories 4–5: Multi-Pane Comparison and Changelog/Version-Alert
+
+### Decision: Zero new backend capability — both stores/dispatchers/readers already exist and are already endpoint-exposed
+
+**Decision**: Reuse spec 006's `IMultiChatSessionStore` / `MultiChatDispatcher` and spec 017's `IChangelogReader` / `IVersionAcknowledgmentStore` / `AlertWindowEvaluator` exactly as they are, calling them directly from new Blazor Server components/state classes — the same "component calls Application-layer services directly" pattern established for Stories 1–3, not the existing `/api/multichat/*` / `/api/changelog*` HTTP routes.
+
+**Rationale**: Direct code inspection confirmed both feature areas are fully implemented, merged, and architecture-tested (`MultiChatSingleImplementationTests.cs`, `SupportSingleImplementationTests.cs`) with zero backend gaps — unlike Story 3, which required new store methods. `CosmosMultiChatSessionStore.GetOrCreateAsync` already seeds a brand-new session with exactly 2 unassigned quadrants (`Position = 0`, `Position = 1`), confirming the 2026-08-28 clarification's "2 unassigned panes by default" answer needs no backend change. `GET /api/changelog/acknowledgment` already computes `showAlert` server-side via `AlertWindowEvaluator.ShouldShowAlert` — the UI's job is only to render that boolean and record a dismissal, not to reimplement the alert-window logic.
+
+**Alternatives considered**: Calling the existing HTTP endpoints via `HttpClient` from the Blazor components (rejected — same rationale as Stories 1–2: an unnecessary in-process HTTP hop when Blazor Server can inject the same services directly, and `MultiChatEndpoints.cs`'s `/api/multichat/session/messages` route streams SSE-framed text that the component would have to re-parse instead of consuming `MultiChatDispatcher`'s `IAsyncEnumerable<QuadrantEvent>` directly).
+
+### Decision: Model picker options come from `IModelAccessService.GetAvailableModelsAsync` — no separate assignment validation needed
+
+**Decision**: `CompareSessionState`'s per-pane model dropdown is populated from the same `IModelAccessService.GetAvailableModelsAsync(caller)` call Stories 1–2 already use to resolve a default model. `AssignModelAsync` is called only with an `Id` drawn from that list.
+
+**Rationale**: Spec 006 FR-011 already states that "which models a caller may assign to a quadrant is constrained by the role-based model allow-list... this spec does not duplicate that constraint" — and `CosmosMultiChatSessionStore.AssignModelAsync` itself performs no model validation (it only validates the assignment via `MultiChatEndpoints.cs`'s HTTP path, using `IModelCatalogService.GetAsync`, which this UI bypasses). Sourcing the dropdown's options from the caller's own allow-list makes an invalid/disallowed `ModelId` architecturally unreachable from the UI, so no redundant validation call is needed — consistent with Constitution Principle V (the enforcement point is the allow-list computation itself, not a UI-side re-check).
+
+**Alternatives considered**: Calling `IModelCatalogService.GetAsync` after selection to validate (rejected — redundant given the dropdown can only ever offer allowed models; would be dead code on the success path with no corresponding UI path that could trigger its failure branch).
+
+### Decision: `ChatShell.razor` is split into a new `AppShell.razor` (pure layout) + a thin chat-specific wrapper
+
+**Decision**: Extract `ChatShell.razor`'s sidebar-hosting markup (`<ConversationList />` + main-content slot) into a new `AppShell.razor` that takes `ChildContent` (`RenderFragment`) and renders a new `SidebarNav.razor` (static "Compare"/"Changelog" `NavLink`s) above `<ConversationList />`. `ChatShell.razor` keeps its `ThreadId`-driven `SwitchToAsync`/`ResetToNew` logic unchanged, now rendering `<AppShell><!-- chat content --></AppShell>` internally. `Compare.razor` and `Changelog.razor` use `<AppShell>` directly, with no `ChatComposerState` dependency at all.
+
+**Rationale**: Without this split, `/compare` and `/changelog` would each need to either duplicate `<ConversationList />`-hosting markup (violating Constitution Principle IV — a second/third implementation of the same persistent-shell concern) or be forced through `ChatShell`'s `ThreadId`-nullable code path, which would spuriously invoke `ComposerState.ResetToNew()` on every render of an unrelated page. Splitting the pure-layout concern out is the smaller, single-responsibility change, and `ChatShell`'s existing Story 3 tests are unaffected since its own behavior doesn't change, only what it delegates to.
+
+**Alternatives considered**: Adding a `bool ManagesThreadState` flag parameter to `ChatShell` (rejected — a flag to suppress a component's own core behavior is a code smell next to a straightforward extract-component refactor); duplicating the sidebar markup in `Compare.razor`/`Changelog.razor` (rejected — Principle IV).
+
+### Decision: `UpdateBanner` lives in `MainLayout.razor`, not `AppShell.razor`
+
+**Decision**: `UpdateBannerState`/`UpdateBanner.razor` are wired into `MainLayout.razor` (which already wraps every page via `@Body`), rendered above `@Body` alongside the existing conditional dev-auth-banner — not inside `AppShell`.
+
+**Rationale**: Per the 2026-08-28 clarification, the notice must be a global banner "visible on every authenticated page" — `MainLayout.razor` is the only component that already wraps literally every route (including any future non-chat route), whereas `AppShell` is scoped to the four chat/compare/changelog routes that choose to use it. Mirrors the existing dev-auth-banner's placement and conditional-render style exactly, so there's one established pattern for "top-of-page conditional banner," not two.
+
+**Alternatives considered**: Rendering the banner from `AppShell` (rejected — narrower reach than "every authenticated page," and would need duplicating into any future non-`AppShell` route); a toast/snackbar instead of a persistent banner (rejected — not requested by the spec, which calls for a notice that "does not reappear... within the acknowledgment window," implying persistence across the session until dismissed, not an auto-expiring toast).
+
+### Decision: Pane history reloads on page load via the existing `ListByThreadAsync` (Story 3 capability), same as conversation switching
+
+**Decision**: `CompareSessionState.InitializeAsync()` — beyond loading quadrant/model-assignment state via `GetOrCreateAsync` — also loads each quadrant's prior message history via `IChatMessageStore.ListByThreadAsync(quadrant.ThreadId, ...)` where `ThreadId` is already set, populating that pane's transcript.
+
+**Rationale**: Spec 024 AC1 (Story 4) only explicitly requires model *assignment* to persist across reload, but leaving an assigned pane's prior conversation invisible after reload (while its model assignment silently persists) would be a confusing, worse-than-nothing UX with no story or FR blocking a fix — and the capability already exists (added in Story 3, reused here at zero new cost). This mirrors the existing `ChatComposerState.SwitchToAsync` pattern exactly.
+
+**Alternatives considered**: Leaving pane transcripts empty on reload, relying only on quadrant/model state (rejected — inconsistent with Story 3's precedent that reload restores visible conversation state, and gratuitously worse UX for a capability that's already free to reuse).
+
+### Decision: Shared single composer, dispatch fan-out and per-pane event routing handled by the existing merged-channel design
+
+**Decision**: `CompareBoard.razor` has one shared composer bound to `CompareSessionState.ComposerText`. `SendToAllAsync` calls `MultiChatDispatcher.DispatchAsync(caller, session, text, ct)` once and `await foreach`s the returned `IAsyncEnumerable<QuadrantEvent>`, routing each event to `Panes[event.Position]` by `Kind` (`Chunk` → append to that pane's in-progress message; `Error` → set that pane's `ErrorMessage`, mark its message complete; `Done` → mark its message complete) and calling `StateHasChanged()` per event.
+
+**Rationale**: `MultiChatDispatcher` (spec 006) already fans out one `IChatPipeline.SendMessageAsync` call per *assigned* quadrant concurrently and merges results into one channel — a slow or failed quadrant's events simply arrive later/differently on that same channel without blocking others, so FR-009/AC3/AC4's independence requirements fall out of the existing dispatcher design with no new concurrency code in the UI layer. Quadrants with no assigned model are never dispatched to at all (dispatcher only sends to assigned quadrants), so `ComparePane.razor` separately renders a "nothing to send to" indicator purely from `Panes[i].ModelId is null` at render time — a local, dispatcher-independent check (Edge Cases).
+
+**Alternatives considered**: One `IChatPipeline.SendMessageAsync` call per pane issued directly from `CompareSessionState` (rejected — would duplicate `MultiChatDispatcher`'s existing fan-out/merge/thread-creation-on-demand logic in a second place, violating Constitution Principle IV).
