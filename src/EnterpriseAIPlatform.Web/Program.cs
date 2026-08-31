@@ -74,6 +74,9 @@ builder.Services.AddChatInfrastructure(builder.Configuration);
 // --- Spec 017: changelog, health probes, feedback proxy (Layer 1, depends on 002 + 004) ---
 builder.Services.AddSupportInfrastructure(builder.Configuration);
 
+// --- Spec 018: sharing-policy evaluator (Layer 1, depends only on 002) ---
+builder.Services.AddSharingInfrastructure(builder.Configuration);
+
 // --- Authorization: deny-by-default fallback + server-side admin gate (spec 002 FR-011/012/013) ---
 builder.Services.AddAuthorizationBuilder()
     .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
