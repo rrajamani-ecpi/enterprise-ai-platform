@@ -31,6 +31,9 @@ public static class PrincipalUserMapper
             Roles = flags,
             AdvancedModelAccess = ReadBool(principal, AppClaimTypes.AdvancedModelAccess),
             ImpersonateAsStudent = ReadBool(principal, AppClaimTypes.ImpersonateAsStudent),
+            // Spec 016 FR-002: read from the transformed claim, never re-derived here — mirroring
+            // how role flags are handled (spec 002 FR-001).
+            GroupTokens = principal.FindAll(AppClaimTypes.GroupToken).Select(c => c.Value).ToArray(),
         };
     }
 

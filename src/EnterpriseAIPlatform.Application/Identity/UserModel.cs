@@ -22,6 +22,18 @@ public sealed record UserModel
 
     public bool ImpersonateAsStudent { get; init; }
 
+    /// <summary>
+    /// Opaque group tokens the caller belongs to, projected from the Entra <c>groups</c> claim by
+    /// <c>RoleClaimsTransformation</c> (spec 016 research.md D6). Matched against a resource's
+    /// group share targets — e.g. <c>PromptModel.SharedWith</c> (spec 016 FR-002).
+    /// </summary>
+    /// <remarks>
+    /// Additive with an empty default so every pre-existing construction site (spec 002 onward)
+    /// stays valid unchanged. Populated only from the server-verified <c>groups</c> claim — never
+    /// from request data, query strings, or client state (Constitution Principle II).
+    /// </remarks>
+    public IReadOnlyList<string> GroupTokens { get; init; } = Array.Empty<string>();
+
     public bool IsAdmin => Roles.IsAdmin;
 
     public bool IsEmployee => Roles.IsEmployee;

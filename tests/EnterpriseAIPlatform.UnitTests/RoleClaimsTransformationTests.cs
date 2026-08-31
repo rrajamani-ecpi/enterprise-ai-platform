@@ -80,4 +80,75 @@ public class RoleClaimsTransformationTests
         Assert.False(mapped.IsAdmin);
         Assert.True(mapped.IsStudent);
     }
+
+    // --- Spec 016 (research.md D6): group tokens are retained for share-target matching. ---
+
+    [Fact]
+    public async Task Transform_RetainsGroupTokens_ForShareTargetMatching()
+    {
+        var principal = AuthenticatedPrincipal(
+            new Claim("groups", AdminGroup.ToString()),
+            new Claim("groups", "engineering-all"));
+
+        var transformed = await CreateTransformation().TransformAsync(principal);
+        var mapped = PrincipalUserMapper.FromPrincipal(transformed);
+
+        Assert.Contains(AdminGroup.ToString(), mapped.GroupTokens);
+        Assert.Contains("engineering-all", mapped.GroupTokens);
+    }
+
+    [Fact]
+    public async Task Transform_RetainsNonGuidGroupTokens_WithoutAffectingRoleDerivation()
+    {
+        // A non-GUID group value must be carried through for sharing while remaining invisible to
+        // role derivation, so spec 002's behaviour is unchanged by spec 016's addition.
+        var principal = AuthenticatedPrincipal(new Claim("groups", "not-a-guid"));
+
+        var transformed = await CreateTransformation().TransformAsync(principal);
+        var mapped = PrincipalUserMapper.FromPrincipal(transformed);
+
+        Assert.Equal(new[] { "not-a-guid" }, mapped.GroupTokens);
+        Assert.False(mapped.IsAdmin);
+    }
+
+    [Fact]
+    public async Task Transform_DeduplicatesGroupTokens()
+    {
+        var principal = AuthenticatedPrincipal(
+            new Claim("groups", "engineering-all"),
+            new Claim("groups", "engineering-all"));
+
+        var transformed = await CreateTransformation().TransformAsync(principal);
+        var mapped = PrincipalUserMapper.FromPrincipal(transformed);
+
+        Assert.Equal(new[] { "engineering-all" }, mapped.GroupTokens);
+    }
+
+    [Fact]
+    public async Task Transform_WithNoGroupClaims_YieldsEmptyGroupTokens()
+    {
+        // Must be empty, never null — PromptAccessEvaluator enumerates this without a null guard.
+        var principal = AuthenticatedPrincipal();
+
+        var transformed = await CreateTransformation().TransformAsync(principal);
+        var mapped = PrincipalUserMapper.FromPrincipal(transformed);
+
+        Assert.Empty(mapped.GroupTokens);
+    }
+
+    [Fact]
+    public async Task Transform_GroupTokensSurviveImpersonationDowngrade()
+    {
+        // Impersonation downgrades role flags only. Group membership is a fact about the caller,
+        // not an elevation, so read access granted via a group share is unaffected.
+        var principal = AuthenticatedPrincipal(
+            new Claim("groups", "engineering-all"),
+            new Claim(AppClaimTypes.ImpersonateAsStudent, "true"));
+
+        var transformed = await CreateTransformation().TransformAsync(principal);
+        var mapped = PrincipalUserMapper.FromPrincipal(transformed);
+
+        Assert.Contains("engineering-all", mapped.GroupTokens);
+        Assert.True(mapped.IsStudent);
+    }
 }
