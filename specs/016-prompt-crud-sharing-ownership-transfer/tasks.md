@@ -222,7 +222,7 @@ Spec priorities are US1 (P1), US2 (P1), US3 (P2), US4 (P1), US5 (P2), US6 (P2). 
 - [X] T066 [P] Update `README.md` with the Prompts feature, the `PromptSql:ConnectionString` setting, and the two migration commands from quickstart.md
 - [X] T067 Run the full `dotnet test EnterpriseAIPlatform.slnx` suite and confirm every pre-existing test from specs 002/004/006/014/017/018/024/009 passes **unmodified** against the T001 baseline — the hard acceptance condition for the cross-spec edits in T008/T009 and T044/T045
 - [X] T068 Execute the manual walkthrough and the non-revealing-error spot check in [quickstart.md](./quickstart.md), confirming SC-001 through SC-008
-- [ ] T069 Open a pull request to `main` from `016-prompt-crud-sharing-ownership-transfer`, calling out the two cross-spec ripples (`UserModel.GroupTokens`, the `ModelAccessDbContext` additive migration) in the description
+- [X] T069 Open a pull request to `main` from `016-prompt-crud-sharing-ownership-transfer`, calling out the two cross-spec ripples (`UserModel.GroupTokens`, the `ModelAccessDbContext` additive migration) in the description
 
 ---
 
