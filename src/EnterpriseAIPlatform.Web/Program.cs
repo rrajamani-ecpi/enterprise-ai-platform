@@ -100,6 +100,9 @@ builder.Services.AddScoped<EnterpriseAIPlatform.Web.Services.ConversationListSta
 builder.Services.AddScoped<EnterpriseAIPlatform.Web.Services.CompareSessionState>();
 builder.Services.AddScoped<EnterpriseAIPlatform.Web.Services.UpdateBannerState>();
 
+// Spec 016: prompt library state, scoped per Blazor circuit.
+builder.Services.AddScoped<EnterpriseAIPlatform.Web.Services.PromptLibraryState>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

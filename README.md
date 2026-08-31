@@ -71,6 +71,7 @@ Set these before running against a real tenant (use user-secrets or environment 
 - `Changelog:ContentDirectory` — Markdown changelog source, one file per version (spec 017), default `content/changelog`.
 - `KeyVault:VaultUri` — backs the `/health/ready` Key Vault check. **Required in Production**; optional in Development (reports Healthy without a live resource).
 - `Feedback:EcpiApiEndpoint`, `Feedback:EcpiApiKey` — the external, non-Azure ECPI Feedback API (spec 017). A static API key is the correct credential shape here — ECPI isn't an Azure resource, so workload identity doesn't apply.
+- `PromptSql:ConnectionString` — Azure SQL for the prompt library (spec 016); like `ModelAccessSql`/`PersonaSql`, the app boots without it because EF Core connects lazily.
 
 ## Status (spec 002)
 
@@ -130,3 +131,36 @@ A minor test-scope issue surfaced here: spec 014's provider-secret scan test did
 A cross-cutting test-infrastructure bug surfaced here: three integration-test factories (`ModelAccessWebApplicationFactory`, and — via inheritance — `ChatWebApplicationFactory`/`MultiChatWebApplicationFactory`/`SupportWebApplicationFactory`) used a blanket "remove every EF-Core-namespaced descriptor" swap to move `ModelAccessDbContext` onto EF Core InMemory for tests. That was safe only while `ModelAccessDbContext` was the sole `DbContext` in the app; adding `PersonaDbContext` broke it two ways — the blanket removal also stripped Persona's registration entirely (unresolvable), and after narrowing the removal to just the intended context, ASP.NET Core's default *shared* EF Core internal service provider then saw both SqlServer (Persona's untouched production config) and InMemory (the swapped context) simultaneously and threw "multiple database providers registered." Fixed by narrowing each factory's descriptor removal to its own `DbContext` type and giving each swapped context its own isolated `UseInternalServiceProvider(...)` — the documented EF Core pattern for exactly this multi-context, multi-provider-in-tests scenario.
 
 An implementation-time layering correction surfaced here: `RoleSharingPolicyOptions`/`GlobalSharingOverrideOptions` are implemented in `EnterpriseAIPlatform.Application.Sharing`, not `.Infrastructure.Sharing` as originally planned — `RoleSharingPolicyOptions` is keyed by `RoleName` (itself in `Application.Authorization`) and consumed directly by the pure `SharingPolicyEvaluator` (also Application), so an Infrastructure location would have created a reverse Application→Infrastructure dependency.
+
+## Status (spec 016)
+
+**Implemented + tested**: US1–US6 — full prompt CRUD, favorites, sharing-gated read access, ownership transfer, AI-assisted generation, and chat seeding. Storage is **Azure SQL via EF Core** (`PromptDbContext`), matching spec 009's persona pattern.
+
+Every gated path returns the same fixed non-revealing `401` for both "forbidden" and "does not exist" (FR-009). This is enforced structurally rather than by convention: `PromptService` never constructs a `NOT_FOUND`, `PromptEndpoints.ToHttpResult` has no `NOT_FOUND` branch to map one with, and an architecture test scans `PromptService`'s IL for any call to `ServerActionResponse<T>.NotFound`. Ownership transfer is a single atomic row update guarded by a `RowVersion` concurrency token — never spec 016's legacy delete-then-recreate — and `TransferPromptOwnershipRequest` declares exactly one property, so a forged `name`/`description`/`sharedWith` in a transfer payload is discarded by the model binder before any handler runs (FR-005/SC-001).
+
+Two deliberate cross-spec ripples:
+
+- **`UserModel.GroupTokens`** (spec 002) — group share targets need the caller's raw group claim values, which `RoleClaimsTransformation` previously consumed only as GUIDs for role derivation and then discarded. It now additionally emits one opaque `eap:groupToken` claim per raw group value. Role derivation still reads only the GUID-parseable subset, so spec 002's behavior is unchanged.
+- **`PersonaGenerationModelConfig.PrimaryModelId`/`FallbackModelId`** (spec 014) — an additive, all-nullable migration on the existing `ModelAccessDbContext`. The entity was already scoped to "AI-assisted persona/**prompt** generation"; an unordered `AllowedModelIds` alone can't express which model is primary, leaving FR-010's "falls back exactly once" unfalsifiable. Generation accumulates `IChatCompletionClient.StreamCompletionAsync` chunks rather than adding a second, non-streaming model-call path for every provider adapter to implement.
+
+Total generation failure (primary + fallback both failing) now returns a structured JSON envelope with the same content type as the success path — the legacy defect was a plain-text 500 that made the client's JSON parse throw and hid the cause.
+
+Migrations for the two contexts this spec touches:
+
+```sh
+dotnet ef migrations add <Name> --context PromptDbContext \
+  --project src/EnterpriseAIPlatform.Infrastructure \
+  --startup-project src/EnterpriseAIPlatform.Infrastructure \
+  --output-dir Prompts/Migrations
+
+dotnet ef migrations add <Name> --context ModelAccessDbContext \
+  --project src/EnterpriseAIPlatform.Infrastructure \
+  --startup-project src/EnterpriseAIPlatform.Infrastructure \
+  --output-dir ModelAccess/Migrations
+```
+
+The Infrastructure project is both project and startup project here: it owns the design-time `IDesignTimeDbContextFactory` implementations, and the Web project doesn't reference `Microsoft.EntityFrameworkCore.Design`.
+
+**Explicitly deferred** — not started, not forgotten: prompt-recipient validation is a shape-only email check, not a directory lookup (spec 002 owns identity resolution, and no such seam exists yet); landing-action configuration for prompt entry points (spec 021); admin UI for selecting the generation primary/fallback models (the fields are API/config-only, matching spec 014's R1 API-only posture).
+
+A note for anyone extending the tests: EF Core's InMemory provider does **not** enforce foreign-key cascade deletes, so `PromptDeleteCascadeTests` asserts the cascade via model metadata (`DeleteBehavior.Cascade`) plus user-visible behavior rather than a post-delete row count. The generated SQL migration does emit `onDelete: ReferentialAction.Cascade` — production is unaffected.

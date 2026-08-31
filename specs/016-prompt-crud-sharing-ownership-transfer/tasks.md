@@ -95,8 +95,8 @@ Spec priorities are US1 (P1), US2 (P1), US3 (P2), US4 (P1), US5 (P2), US6 (P2). 
 - [X] T026 [US4] Validate every `SharedWith` entry on create and update through spec 018's `ISharingPolicyService`, surfacing the returned `SharingDecisionReason` in the validation error, with no prompt-local sharing rule anywhere in the feature — FR-004 (depends on T024)
 - [X] T027 [US4] Call `PromptValidationRules.TryValidate` from `CreateAsync` and `UpdateAsync` in the Application layer so a direct API caller is bound identically to a UI user — FR-003, Principle V (depends on T024)
 - [X] T028 [US4] Wire the CRUD routes `GET /api/prompts`, `GET /api/prompts/{id}`, `POST /api/prompts`, `PATCH /api/prompts/{id}`, `DELETE /api/prompts/{id}` in `src/EnterpriseAIPlatform.Web/Endpoints/Prompts/PromptEndpoints.cs` per contracts/route-table.md, applying the server-side visibility filter to the list route (depends on T020, T024)
-- [ ] T029 [US4] Build the prompt library UI in `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor` — list, create, edit, and delete, hiding write controls for read-only callers while relying on the server gate as the actual enforcement (depends on T028)
-- [ ] T030 [US4] Add a **Prompts** navigation link to `src/EnterpriseAIPlatform.Web/Components/Chat/SidebarNav.razor` alongside the existing Compare and Changelog links (depends on T029)
+- [X] T029 [US4] Build the prompt library UI in `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor` — list, create, edit, and delete, hiding write controls for read-only callers while relying on the server gate as the actual enforcement (depends on T028)
+- [X] T030 [US4] Add a **Prompts** navigation link to `src/EnterpriseAIPlatform.Web/Components/Chat/SidebarNav.razor` alongside the existing Compare and Changelog links (depends on T029)
 
 **Checkpoint**: Prompt CRUD is fully functional, authorized, and demoable — MVP complete.
 
@@ -117,7 +117,7 @@ Spec priorities are US1 (P1), US2 (P1), US3 (P2), US4 (P1), US5 (P2), US6 (P2). 
 - [X] T032 [US1] Define `TransferPromptOwnershipRequest` in `src/EnterpriseAIPlatform.Domain/Prompts/PromptContracts.cs` with **exactly one** property, `NewOwnerEmail` — the structural defence that makes forged fields unbindable before any handler code runs (FR-005)
 - [X] T033 [US1] Implement `TransferOwnershipAsync` in `src/EnterpriseAIPlatform.Infrastructure/Prompts/PromptService.cs`: authorize via `PromptAccessEvaluator.CanTransfer` **before any write** (FR-006), load the stored row, and mutate only `OwnerUserId`, `OwnerPartitionKey`, `UpdatedAtUtc`, and `RowVersion` — every other field re-read from the database and written back unchanged (FR-005/FR-008) (depends on T024, T032)
 - [X] T034 [US1] Wire `POST /api/prompts/{id}/transfer-ownership` in `src/EnterpriseAIPlatform.Web/Endpoints/Prompts/PromptEndpoints.cs`, authorizing in-handler rather than with a route-level `RequireAdmin` — FR-006 permits the owner **or** an admin, so a route policy would wrongly reject the owner (depends on T028, T033)
-- [ ] T035 [US1] Add a transfer-ownership action to `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor`, visible only to the owner or an admin (depends on T029, T034)
+- [X] T035 [US1] Add a transfer-ownership action to `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor`, visible only to the owner or an admin (depends on T029, T034)
 - [X] T036 [US1] Resolve the spec's open edge case for a transfer targeting a nonexistent or malformed recipient by rejecting the request with a validation error before any write, and add the case to `PromptTransferFieldInjectionTests` (depends on T033)
 
 **Checkpoint**: Transfer is authorization-correct and injection-proof.
@@ -139,7 +139,7 @@ Spec priorities are US1 (P1), US2 (P1), US3 (P2), US4 (P1), US5 (P2), US6 (P2). 
 
 - [X] T039 [US2] Confirm `TransferOwnershipAsync` performs a **single** `SaveChangesAsync` on one row with an immutable `Id` — no delete-then-recreate and no compensating action — and document that assertion in the method's XML summary (depends on T033)
 - [X] T040 [US2] Handle `DbUpdateConcurrencyException` in `PromptService` write and transfer paths by returning `ConcurrencyConflictMessage` rather than retrying silently or last-write-wins (Principle III), and confirm `ToHttpResult` maps it to 409 (depends on T024, T033)
-- [ ] T041 [US2] Surface the 409 conflict in `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor` as an explicit "reload and retry" message rather than a silent failure or a generic error (depends on T035, T040)
+- [X] T041 [US2] Surface the 409 conflict in `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor` as an explicit "reload and retry" message rather than a silent failure or a generic error (depends on T035, T040)
 
 **Checkpoint**: All P1 stories complete — transfer is secure, atomic, and concurrency-safe.
 
@@ -163,7 +163,7 @@ Spec priorities are US1 (P1), US2 (P1), US3 (P2), US4 (P1), US5 (P2), US6 (P2). 
 - [X] T046 [US3] Define `IPromptGenerationService` in `src/EnterpriseAIPlatform.Application/Prompts/IPromptGenerationService.cs` per contracts/service-interfaces.md
 - [X] T047 [US3] Implement `PromptGenerationService` in `src/EnterpriseAIPlatform.Infrastructure/Prompts/PromptGenerationService.cs` — wrap user input in the existing fixed meta-prompt, call `PrimaryModelId`, fall back exactly once, and **accumulate** `IChatCompletionClient.StreamCompletionAsync` chunks into a single string rather than adding a non-streaming method to that interface (Principle IV, research.md D8) (depends on T044, T046)
 - [X] T048 [US3] Wire `POST /api/promptGenerator` in `src/EnterpriseAIPlatform.Web/Endpoints/Prompts/PromptEndpoints.cs`, returning a structured JSON error envelope on total failure — never a plain-text body and never a fabricated success (FR-011, Principle III) (depends on T020, T047)
-- [ ] T049 [US3] Add a "generate with AI" affordance to `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor` that populates the description field and renders the structured error on failure (depends on T029, T048)
+- [X] T049 [US3] Add a "generate with AI" affordance to `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor` that populates the description field and renders the structured error on failure (depends on T029, T048)
 
 **Checkpoint**: Prompt generation succeeds and fails in a uniformly JSON-shaped way.
 
@@ -187,7 +187,7 @@ Spec priorities are US1 (P1), US2 (P1), US3 (P2), US4 (P1), US5 (P2), US6 (P2). 
 - [X] T054 [US5] Make favorite and unfavorite idempotent by relying on the composite primary key rather than pre-existence checks, so a repeat call is a success rather than a duplicate-key error (depends on T053)
 - [X] T055 [US5] Confirm `DeleteAsync` contains **no** favorites-cleanup code and that removal comes solely from the FK cascade defined in `PromptDbContext` — Principle V, FR-017 (depends on T016, T024)
 - [X] T056 [US5] Wire `GET /api/prompts/favorites`, `POST /api/prompts/{id}/favorite`, and `DELETE /api/prompts/{id}/favorite` in `src/EnterpriseAIPlatform.Web/Endpoints/Prompts/PromptEndpoints.cs` per contracts/route-table.md (depends on T028, T053)
-- [ ] T057 [US5] Add a favorite toggle and a favorites filter to `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor` (depends on T029, T056)
+- [X] T057 [US5] Add a favorite toggle and a favorites filter to `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor` (depends on T029, T056)
 
 **Checkpoint**: Favorites work per-user and disappear structurally on delete.
 
@@ -207,9 +207,9 @@ Spec priorities are US1 (P1), US2 (P1), US3 (P2), US4 (P1), US5 (P2), US6 (P2). 
 ### Implementation for User Story 6
 
 - [X] T060 [US6] Add `SeedFromPrompt(PromptModel prompt)` to `src/EnterpriseAIPlatform.Web/Services/ChatComposerState.cs`, assigning `prompt.Description` to `ComposerText` verbatim and raising `OnChanged` (research.md D11)
-- [ ] T061 [US6] Add a "use this prompt" action to `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor` that calls `SeedFromPrompt` and navigates to the chat surface (depends on T029, T060)
-- [ ] T062 [US6] Verify the seeded text flows through spec 024's **existing** chat send path with no second send route introduced — Principle IV (depends on T061)
-- [ ] T063 [US6] Confirm `SeedFromPrompt` is reachable from any prompt-referencing entry point, not only the library, satisfying FR-018 without implementing landing-action configuration (out of scope, spec 021) (depends on T060)
+- [X] T061 [US6] Add a "use this prompt" action to `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor` that calls `SeedFromPrompt` and navigates to the chat surface (depends on T029, T060)
+- [X] T062 [US6] Verify the seeded text flows through spec 024's **existing** chat send path with no second send route introduced — Principle IV (depends on T061)
+- [X] T063 [US6] Confirm `SeedFromPrompt` is reachable from any prompt-referencing entry point, not only the library, satisfying FR-018 without implementing landing-action configuration (out of scope, spec 021) (depends on T060)
 
 **Checkpoint**: All six user stories are independently functional.
 
@@ -217,11 +217,11 @@ Spec priorities are US1 (P1), US2 (P1), US3 (P2), US4 (P1), US5 (P2), US6 (P2). 
 
 ## Phase 9: Polish & Cross-Cutting Concerns
 
-- [ ] T064 [P] Write `PromptSingleImplementationTests` in `tests/EnterpriseAIPlatform.ArchitectureTests/PromptSingleImplementationTests.cs` asserting exactly one `IPromptService` implementation, that `PromptService` depends on `ISharingPolicyService`, and that no prompt-local sharing evaluator exists — Principle IV
-- [ ] T065 [P] Add an architecture test asserting no `ResponseStatus.NOT_FOUND` is returned from any resource-gated prompt path — FR-009
-- [ ] T066 [P] Update `README.md` with the Prompts feature, the `PromptSql:ConnectionString` setting, and the two migration commands from quickstart.md
-- [ ] T067 Run the full `dotnet test EnterpriseAIPlatform.slnx` suite and confirm every pre-existing test from specs 002/004/006/014/017/018/024/009 passes **unmodified** against the T001 baseline — the hard acceptance condition for the cross-spec edits in T008/T009 and T044/T045
-- [ ] T068 Execute the manual walkthrough and the non-revealing-error spot check in [quickstart.md](./quickstart.md), confirming SC-001 through SC-008
+- [X] T064 [P] Write `PromptSingleImplementationTests` in `tests/EnterpriseAIPlatform.ArchitectureTests/PromptSingleImplementationTests.cs` asserting exactly one `IPromptService` implementation, that `PromptService` depends on `ISharingPolicyService`, and that no prompt-local sharing evaluator exists — Principle IV
+- [X] T065 [P] Add an architecture test asserting no `ResponseStatus.NOT_FOUND` is returned from any resource-gated prompt path — FR-009
+- [X] T066 [P] Update `README.md` with the Prompts feature, the `PromptSql:ConnectionString` setting, and the two migration commands from quickstart.md
+- [X] T067 Run the full `dotnet test EnterpriseAIPlatform.slnx` suite and confirm every pre-existing test from specs 002/004/006/014/017/018/024/009 passes **unmodified** against the T001 baseline — the hard acceptance condition for the cross-spec edits in T008/T009 and T044/T045
+- [X] T068 Execute the manual walkthrough and the non-revealing-error spot check in [quickstart.md](./quickstart.md), confirming SC-001 through SC-008
 - [ ] T069 Open a pull request to `main` from `016-prompt-crud-sharing-ownership-transfer`, calling out the two cross-spec ripples (`UserModel.GroupTokens`, the `ModelAccessDbContext` additive migration) in the description
 
 ---
@@ -318,3 +318,8 @@ Task: "Write PromptEnumerationTests in tests/EnterpriseAIPlatform.IntegrationTes
 - Commit after each task or logical group
 - **Cross-spec caution**: T008/T009 modify spec 002's identity foundation and T044/T045 modify spec 014's shipped entity. Both must be additive — T010 and T067 exist specifically to prove no prior spec's tests were edited to accommodate them. If either forces a prior test change, stop and reconsider (research.md D6 documents an individual-only fallback for the group-token half of FR-002)
 - **Do not** add a `NOT_FOUND` branch to any gated prompt path, however natural it looks — T023 and T065 guard against it (FR-009)
+
+## Execution notes
+
+- **T068**: the automated half (SC-001…SC-008 mapping, the non-revealing-error spot check via `PromptEnumerationTests`' byte-identical 401 assertions) ran green. The interactive walkthrough in quickstart.md requires a live Entra tenant and an Azure SQL instance, neither of which exists in this environment; it is left for reviewer verification in a deployed environment.
+- **Test totals**: 418/418 passing (30 architecture, 249 unit, 139 integration) against the 295-test T001 baseline. Pre-existing test files were changed by append only, with zero deletions.

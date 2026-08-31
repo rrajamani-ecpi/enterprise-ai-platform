@@ -1,0 +1,239 @@
+@using EnterpriseAIPlatform.Domain.Prompts
+@using EnterpriseAIPlatform.Web.Services
+@inject PromptLibraryState State
+@inject ChatComposerState Composer
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<div class="prompt-library">
+    <header class="prompt-library-header">
+        <h1>Prompts</h1>
+        <label class="prompt-library-filter">
+            <input type="checkbox" checked="@State.ShowFavoritesOnly" @onchange="OnFavoritesFilterChanged" />
+            Favorites only
+        </label>
+    </header>
+
+    @if (State.CurrentUser is null)
+    {
+        <p class="prompt-library-error" role="alert">Sign in to use the prompt library.</p>
+    }
+    else
+    {
+        @if (State.HasConcurrencyConflict)
+        {
+            @* FR-004: a lost update is recoverable, so it gets explicit next-step guidance rather
+               than the generic failure text. *@
+            <p class="prompt-library-conflict" role="alert">
+                Someone else changed this prompt while you were editing. Reload the prompt and retry your change.
+                <button type="button" class="prompt-library-reload" @onclick="ReloadAsync">Reload</button>
+            </p>
+        }
+        else if (State.ErrorMessage is not null)
+        {
+            <p class="prompt-library-error" role="alert">@State.ErrorMessage</p>
+        }
+
+        <section class="prompt-editor">
+            <h2>@(_editingId is null ? "New prompt" : "Edit prompt")</h2>
+            <input class="prompt-editor-name"
+                   placeholder="Name"
+                   value="@_name"
+                   @oninput="e => _name = e.Value?.ToString() ?? string.Empty" />
+            <textarea class="prompt-editor-description"
+                      placeholder="Prompt text"
+                      value="@_description"
+                      @oninput="e => _description = e.Value?.ToString() ?? string.Empty"></textarea>
+
+            <div class="prompt-editor-generate">
+                <input class="prompt-editor-intent"
+                       placeholder="Describe what the prompt should do…"
+                       value="@_generationIntent"
+                       @oninput="e => _generationIntent = e.Value?.ToString() ?? string.Empty" />
+                <button type="button"
+                        disabled="@(State.IsBusy || string.IsNullOrWhiteSpace(_generationIntent))"
+                        @onclick="GenerateAsync">
+                    Generate with AI
+                </button>
+            </div>
+
+            <div class="prompt-editor-actions">
+                <button type="button" disabled="@(State.IsBusy || !CanSave)" @onclick="SaveAsync">
+                    @(_editingId is null ? "Create" : "Save")
+                </button>
+                @if (_editingId is not null)
+                {
+                    <button type="button" @onclick="ResetEditor">Cancel</button>
+                }
+            </div>
+        </section>
+
+        <ul class="prompt-list">
+            @foreach (var item in State.VisiblePrompts)
+            {
+                <li class="prompt-list-item" @key="item.Prompt.Id">
+                    <div class="prompt-list-item-body">
+                        <h3>@item.Prompt.Name</h3>
+                        <p class="prompt-list-item-text">@item.Prompt.Description</p>
+                        <p class="prompt-list-item-owner">Owner: @item.Prompt.OwnerUserId</p>
+                    </div>
+
+                    <div class="prompt-list-item-actions">
+                        <button type="button" @onclick="() => ToggleFavoriteAsync(item)">
+                            @(item.IsFavorite ? "Unfavorite" : "Favorite")
+                        </button>
+                        <button type="button" @onclick="() => UseAsync(item.Prompt)">Use this prompt</button>
+
+                        @* Write controls are hidden for callers who can't use them; the server gate
+                           is the actual enforcement, so hiding is convenience, not security. *@
+                        @if (State.CanWrite(item.Prompt))
+                        {
+                            <button type="button" @onclick="() => BeginEdit(item.Prompt)">Edit</button>
+                            <button type="button" @onclick="() => DeleteAsync(item.Prompt.Id)">Delete</button>
+                        }
+
+                        @if (State.CanTransfer(item.Prompt))
+                        {
+                            <button type="button" @onclick="() => BeginTransfer(item.Prompt.Id)">Transfer ownership</button>
+                        }
+                    </div>
+
+                    @if (_transferringId == item.Prompt.Id)
+                    {
+                        <div class="prompt-transfer">
+                            <input class="prompt-transfer-email"
+                                   placeholder="New owner email"
+                                   value="@_transferEmail"
+                                   @oninput="e => _transferEmail = e.Value?.ToString() ?? string.Empty" />
+                            <button type="button"
+                                    disabled="@(State.IsBusy || string.IsNullOrWhiteSpace(_transferEmail))"
+                                    @onclick="() => TransferAsync(item.Prompt.Id)">
+                                Transfer
+                            </button>
+                            <button type="button" @onclick="() => _transferringId = null">Cancel</button>
+                        </div>
+                    }
+                </li>
+            }
+        </ul>
+
+        @if (State.VisiblePrompts.Count == 0)
+        {
+            <p class="prompt-list-empty">
+                @(State.ShowFavoritesOnly ? "You haven't favorited any prompts yet." : "No prompts yet.")
+            </p>
+        }
+    }
+</div>
+
+@code {
+    private string _name = string.Empty;
+    private string _description = string.Empty;
+    private string _generationIntent = string.Empty;
+    private string? _editingId;
+    private string? _transferringId;
+    private string _transferEmail = string.Empty;
+
+    private bool CanSave => !string.IsNullOrWhiteSpace(_name) && !string.IsNullOrWhiteSpace(_description);
+
+    protected override async Task OnInitializedAsync()
+    {
+        State.OnChanged += HandleStateChanged;
+        await State.LoadAsync();
+    }
+
+    private void HandleStateChanged() => InvokeAsync(StateHasChanged);
+
+    private Task ReloadAsync() => State.LoadAsync();
+
+    private void OnFavoritesFilterChanged(ChangeEventArgs e) =>
+        State.SetFavoritesFilter(e.Value is bool isChecked && isChecked);
+
+    private void BeginEdit(PromptPublicDTO prompt)
+    {
+        _editingId = prompt.Id;
+        _name = prompt.Name;
+        _description = prompt.Description;
+    }
+
+    private void BeginTransfer(string promptId)
+    {
+        _transferringId = promptId;
+        _transferEmail = string.Empty;
+    }
+
+    private void ResetEditor()
+    {
+        _editingId = null;
+        _name = string.Empty;
+        _description = string.Empty;
+        _generationIntent = string.Empty;
+    }
+
+    private async Task SaveAsync()
+    {
+        var succeeded = _editingId is null
+            ? await State.CreateAsync(_name, _description)
+            : await State.UpdateAsync(_editingId, _name, _description);
+
+        if (succeeded)
+        {
+            ResetEditor();
+        }
+    }
+
+    private async Task DeleteAsync(string promptId)
+    {
+        await State.DeleteAsync(promptId);
+
+        if (_editingId == promptId)
+        {
+            ResetEditor();
+        }
+    }
+
+    private Task ToggleFavoriteAsync(PromptWithFavoriteDTO item) =>
+        State.ToggleFavoriteAsync(item.Prompt.Id, item.IsFavorite);
+
+    private async Task TransferAsync(string promptId)
+    {
+        if (await State.TransferOwnershipAsync(promptId, _transferEmail))
+        {
+            _transferringId = null;
+            _transferEmail = string.Empty;
+        }
+    }
+
+    private async Task GenerateAsync()
+    {
+        var generated = await State.GenerateDescriptionAsync(_generationIntent);
+
+        // Only a real success touches the field. On failure the description is left alone and the
+        // structured error renders above (FR-011) — the error text never becomes prompt content.
+        if (generated is not null)
+        {
+            _description = generated;
+        }
+    }
+
+    /// <summary>
+    /// FR-012/FR-018 — seeds the existing chat composer and navigates to the chat surface. It does
+    /// not send: the user lands on an editable composer, and the message goes out through spec
+    /// 024's one send path (Principle IV).
+    /// </summary>
+    private void UseAsync(PromptPublicDTO prompt)
+    {
+        Composer.SeedFromPrompt(new PromptModel
+        {
+            Id = prompt.Id,
+            OwnerUserId = prompt.OwnerUserId,
+            OwnerPartitionKey = string.Empty,
+            Name = prompt.Name,
+            Description = prompt.Description,
+        });
+
+        Navigation.NavigateTo("/");
+    }
+
+    public void Dispose() => State.OnChanged -= HandleStateChanged;
+}

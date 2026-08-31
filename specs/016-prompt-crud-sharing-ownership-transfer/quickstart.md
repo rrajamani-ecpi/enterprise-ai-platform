@@ -16,9 +16,11 @@ Same as specs 014/009 — no new tooling:
 - To run the app against real storage, set `PromptSql:ConnectionString` (user-secrets locally, Key Vault-backed app setting in Azure) and apply migrations:
 
 ```bash
-dotnet ef database update --context PromptDbContext --project src/EnterpriseAIPlatform.Infrastructure --startup-project src/EnterpriseAIPlatform.Web
-dotnet ef database update --context ModelAccessDbContext --project src/EnterpriseAIPlatform.Infrastructure --startup-project src/EnterpriseAIPlatform.Web
+dotnet ef database update --context PromptDbContext --project src/EnterpriseAIPlatform.Infrastructure --startup-project src/EnterpriseAIPlatform.Infrastructure
+dotnet ef database update --context ModelAccessDbContext --project src/EnterpriseAIPlatform.Infrastructure --startup-project src/EnterpriseAIPlatform.Infrastructure
 ```
+
+The Infrastructure project is its own startup project here: it owns the design-time `IDesignTimeDbContextFactory` implementations, and `EnterpriseAIPlatform.Web` does not reference `Microsoft.EntityFrameworkCore.Design` (passing `--startup-project src/EnterpriseAIPlatform.Web` fails for that reason).
 
 The second command applies the additive `PrimaryModelId`/`FallbackModelId` columns to spec 014's existing context ([data-model.md](./data-model.md)).
 
@@ -54,7 +56,9 @@ dotnet test tests/EnterpriseAIPlatform.ArchitectureTests
 | **SC-005** | Authorized CRUD round-trips correctly | `PromptCrudTests` — create → read → update → read → delete → read, run as owner, as admin, and as collaborator. Each mutation must be visible on the next read. Also covers FR-003 rejection of empty `name`/`description` and the `RowVersion` 409 path. |
 | **SC-006** | Delete leaves nothing behind | `PromptDeleteCascadeTests` — favorite a prompt from three different users, delete it, then assert it is absent from every list, every read, and **every user's** favorites, with zero `PromptFavorite` rows remaining. The cleanup comes from the FK cascade, so the test also guards the mapping, not just the handler (FR-017). |
 | **SC-007** | Favorites are strictly per-user | `PromptFavoritesTests` — user A favorites a prompt; assert it appears in A's list and **not** in B's. Repeat-favorite is idempotent (composite PK), unfavorite is idempotent, and favoriting a prompt the caller cannot read returns 401 (FR-016). Also asserts a transfer leaves all favorites untouched (FR-019). |
-| **SC-008** | Prompt selection seeds the composer verbatim | `ChatComposerStateTests` — `SeedFromPrompt` assigns `Description` with zero substitution, including prompts containing `{placeholder}`-looking text, braces, and newlines, which must survive unchanged (FR-012/FR-018). |
+| **SC-008** | Prompt selection seeds the composer verbatim | `ChatComposerStateSeedTests` — `SeedFromPrompt` assigns `Description` with zero substitution, including prompts containing `{placeholder}`-looking text, braces, and newlines, which must survive unchanged (FR-012/FR-018). |
+
+**Result (last full run)**: 418/418 passing — 30 architecture, 249 unit, 139 integration — against a 295-test pre-implementation baseline, with every pre-existing test file changed only by append (`TestAuthHandler`, `RoleClaimsTransformationTests`) and zero deletions.
 
 ---
 
