@@ -24,6 +24,8 @@ All items below resolve the Technical Context; the spec's single clarification (
 
 **Alternatives considered**: Adding a new `Faculty` flag to spec 002's `RoleFlags` (rejected — out of scope for 018, which must not modify spec 002; also spec 018's Assumptions already treat the PRD's named roles as illustrative, not literal). Keying policy by a free-form string role name instead of the `RoleName` enum (rejected — loses compile-time safety and the DataAnnotations validation pattern every other `Options` class in this codebase uses).
 
+**Addendum (post-`/speckit.analyze`)**: `RoleName.Contractor` has no corresponding spec.md FR/SC at all — spec 018 only defines policy for the "faculty"/"student" roles it maps to `Employee`/`Student`. Requiring an explicit `Roles` entry for `Contractor` would force guessing an unspecified product decision. Resolved by making `Roles` entries optional per role: a `RoleName` absent from config evaluates as the most restrictive `RolePolicy.Default` (`GroupSharingEnabled: false, AllowedGroups: []`) rather than failing startup or guessing a permissive value — safe until a `/speckit.clarify` pass defines Contractor's actual policy. `Admin` remains explicitly rejected as a key regardless (D3).
+
 ---
 
 ## D3: Admin bypass and individual-sharing are hardcoded evaluator rules, not configurable entries

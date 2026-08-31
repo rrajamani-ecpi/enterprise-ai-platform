@@ -114,3 +114,11 @@ The quadrant floor/cap invariant (FR-004/005) lives in a pure `MultiChatQuadrant
 **Explicitly deferred to R2** — not started, not forgotten: US5 (real-time long-running-operation notifications) — no long-running operation exists anywhere in R1 to notify about.
 
 A minor test-scope issue surfaced here: spec 014's provider-secret scan test did a blanket string search across all of `appsettings.json`, which false-positived on this spec's unrelated `Feedback:EcpiApiKey` (a legitimate third-party credential placeholder, not an Azure model-provider secret). Narrowed that test to the `ModelProviders` config section, matching its actual intent.
+
+## Status (spec 018)
+
+**Evaluator-only, implemented + tested** (36 unit tests + 2 architecture tests, all passing): US1–US4 — `ISharingPolicyService`/`SharingPolicyEvaluator` compute the canonical allow/deny `SharingDecision` for a share-target request from the caller's role flags, the per-role `RoleSharing` config, and any active `GlobalSharingOverride` (admin bypass, per-role individual/group rules, disable-all-group-sharing, admin-only mode, globally-allowed-groups precedence, and the `ShareTarget` read-default/explicit-collaborator split). No database, cache, or admin UI — both config sections are static `IOptions`-bound app config, per this spec's own clarification.
+
+**Explicitly deferred** — not started, not forgotten: any actual persona/prompt/data-product sharing behavior (specs 009/012/016 adopting `ISharingPolicyService` instead of their own share-validity checks) is a separate, future refactor outside this spec's scope; `RoleName.Contractor` has no defined sharing policy yet (falls back to a fail-safe restrictive default) pending a future clarification.
+
+An implementation-time layering correction surfaced here: `RoleSharingPolicyOptions`/`GlobalSharingOverrideOptions` are implemented in `EnterpriseAIPlatform.Application.Sharing`, not `.Infrastructure.Sharing` as originally planned — `RoleSharingPolicyOptions` is keyed by `RoleName` (itself in `Application.Authorization`) and consumed directly by the pure `SharingPolicyEvaluator` (also Application), so an Infrastructure location would have created a reverse Application→Infrastructure dependency.

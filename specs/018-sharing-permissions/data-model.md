@@ -28,7 +28,7 @@ Read | Collaborator
 |---|---|---|
 | `Type` | `ShareTargetType` | `Individual` or `Group`. |
 | `Identity` | string? | Individual identity (email), set only when `Type == Individual`. |
-| `GroupToken` | string? | Deployment-defined group token (e.g. `admins`, `students`, `@employees`, `announcements`), set only when `Type == Group`. Treated as an opaque string, not a fixed enum (spec Edge Cases — group catalogs are deployment-configured). |
+| `GroupToken` | string? | Deployment-defined group token (e.g. `admins`, `students`, `@employees`, `announcements`), set only when `Type == Group`. Corresponds to spec.md's `Group` Key Entity — represented here as an opaque string, not a distinct type, per spec Edge Cases (group catalogs are deployment-configured, not a fixed enum). |
 | `AccessLevel` | `AccessLevel` | `Read` by default; `Collaborator` only when the owner explicitly designates it (FR-012/FR-013). |
 
 **Validation invariant**: exactly one of `Identity`/`GroupToken` is set, matching `Type`. This is a shape invariant for 018's own request/decision types; enforcing it against a real persisted resource (e.g. a persona's `sharedWith` list) is each consumer spec's (009/012/016) own concern, not 018's.
@@ -50,7 +50,7 @@ Read | Collaborator
 
 | Field | Type | Notes |
 |---|---|---|
-| `Roles` | `Dictionary<RoleName, RolePolicy>` | Keyed by the real, already-implemented `RoleName` enum (`Employee`, `Contractor`, `Student` — **not** `Admin`; see research.md D2/D3). `[Required]`, must contain an entry for every non-admin `RoleName` (validated at startup). |
+| `Roles` | `Dictionary<RoleName, RolePolicy>` | Keyed by the real, already-implemented `RoleName` enum (`Employee`, `Contractor`, `Student` — **not** `Admin`; see research.md D2/D3). Entries are optional per role (see fail-safe default below) rather than `[Required]` for every key. |
 
 ### `RolePolicy`  *(nested)*
 
@@ -60,6 +60,8 @@ Read | Collaborator
 | `AllowedGroups` | `string[]` | Group tokens this role may target when `GroupSharingEnabled` is true. `[Required]` (may be empty, meaning group-sharing is enabled in name only until configured). |
 
 **Validation invariant**: `Admin` MUST NOT appear as a key — admin's "share with everything" behavior is hardcoded in the evaluator (D3), never config-driven, so a config entry for `Admin` would be dead/misleading and is rejected at startup.
+
+**Fail-safe default for unconfigured roles**: spec.md defines policy only for `Employee`/`Student` (mapped from "faculty"/"student" — see spec Assumptions); `Contractor` has no spec-defined policy. Rather than requiring every non-admin `RoleName` to have an explicit entry (which would force guessing Contractor's correct values), a `RoleName` absent from `Roles` evaluates as `GroupSharingEnabled = false, AllowedGroups = []` — the most restrictive policy, per Principle III (fail loud/fail closed applied to an undefined product decision, not a silent unsafe default). This is a temporary posture until a `/speckit.clarify` pass defines Contractor's actual policy.
 
 **appsettings.json shape** — see [contracts/config-schema.md](./contracts/config-schema.md).
 
@@ -95,9 +97,11 @@ SharingDecision(callerRoles, request, rolePolicy, globalOverride) =
       Deny(GroupSharingDisabledGlobally)        if globalOverride.DisableAllGroupSharing
       Allow(GloballyAllowedGroup)               if request.GroupToken in globalOverride.GloballyAllowedGroups
       Allow(RolePolicyAllowed)                  if any role r in callerRoles where
-                                                    rolePolicy.Roles[r].GroupSharingEnabled
-                                                    && request.GroupToken in rolePolicy.Roles[r].AllowedGroups
+                                                    rolePolicy.Roles.GetValueOrDefault(r, RolePolicy.Default).GroupSharingEnabled
+                                                    && request.GroupToken in rolePolicy.Roles.GetValueOrDefault(r, RolePolicy.Default).AllowedGroups
       Deny(RolePolicyDenied)                    otherwise
+      // RolePolicy.Default = { GroupSharingEnabled: false, AllowedGroups: [] } — fail-safe for a role
+      // absent from config (e.g. unconfigured Contractor), never a KeyNotFoundException.
 ```
 
 | Field | Type | Notes |
