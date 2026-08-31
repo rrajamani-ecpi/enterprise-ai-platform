@@ -149,6 +149,28 @@ public static class PromptEndpoints
             return ToHttpResult(result, _ => Results.Ok());
         });
 
+        // FR-011: total generation failure returns a structured JSON envelope with the same
+        // content type as the success path — never the plain-text 500 the legacy system produced,
+        // and never a 200 whose "generated" text is actually an error message.
+        app.MapPost("/api/promptGenerator", async (
+            PromptGenerationRequest request,
+            ICurrentUserAccessor currentUser,
+            IPromptGenerationService generator,
+            CancellationToken ct) =>
+        {
+            var callerResult = currentUser.GetCurrentUser();
+            if (callerResult.Status != ResponseStatus.OK)
+            {
+                return Results.Unauthorized();
+            }
+
+            var result = await generator.GenerateAsync(request, callerResult.Response!, ct);
+            return result.Status == ResponseStatus.OK
+                ? Results.Json(new PromptGenerationResponse(
+                    result.Response!.GeneratedText, result.Response.ModelId, result.Response.UsedFallback))
+                : Results.Json(result, statusCode: StatusCodes.Status502BadGateway);
+        });
+
         return app;
     }
 
@@ -202,4 +224,6 @@ public static class PromptEndpoints
         DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc);
 
     public sealed record PromptListItemResponse(PromptResponse Prompt, bool IsFavorite);
+
+    public sealed record PromptGenerationResponse(string GeneratedText, string ModelId, bool UsedFallback);
 }

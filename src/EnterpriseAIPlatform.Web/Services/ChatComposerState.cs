@@ -2,6 +2,7 @@ using EnterpriseAIPlatform.Application.Chat;
 using EnterpriseAIPlatform.Application.Identity;
 using EnterpriseAIPlatform.Application.ModelAccess;
 using EnterpriseAIPlatform.Domain.Chat;
+using EnterpriseAIPlatform.Domain.Prompts;
 
 namespace EnterpriseAIPlatform.Web.Services;
 
@@ -115,9 +116,29 @@ public sealed class ChatComposerState
         NotifyChanged();
     }
 
-    public async Task SendAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Spec 016 FR-012/FR-018 — seeds the composer with a prompt's text so the user can edit it
+    /// before sending.
+    /// </summary>
+    /// <remarks>
+    /// Assigns <see cref="PromptModel.Description"/> <b>verbatim</b>. There is deliberately no
+    /// placeholder or variable substitution step: the prompt entity has no variable schema, so any
+    /// substitution here would have to guess at delimiters and would silently corrupt prompts whose
+    /// text legitimately contains <c>[brackets]</c> or <c>{braces}</c> (SC-008).
+    ///
+    /// This seeds the existing composer rather than sending anything, so the text flows through
+    /// spec 024's one existing send path — no second send route is introduced (Principle IV).
+    /// Being a plain method on the Scoped composer state, it is reachable from any
+    /// prompt-referencing entry point, not just the library (FR-018).
+    /// </remarks>
+    public void SeedFromPrompt(PromptModel prompt)
     {
-        if (IsStreaming || string.IsNullOrWhiteSpace(ComposerText) || CurrentUser is null)
+        ComposerText = prompt.Description;
+        NotifyChanged();
+    }
+
+    public async Task SendAsync(CancellationToken cancellationToken = default)
+    {        if (IsStreaming || string.IsNullOrWhiteSpace(ComposerText) || CurrentUser is null)
         {
             return;
         }

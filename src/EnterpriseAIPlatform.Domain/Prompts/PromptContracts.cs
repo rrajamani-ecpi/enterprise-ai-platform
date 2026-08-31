@@ -44,3 +44,14 @@ public sealed record PromptWithFavoriteDTO(PromptPublicDTO Prompt, bool IsFavori
 /// could be forgotten (contracts/authorization-policies.md).
 /// </summary>
 public sealed record TransferPromptOwnershipRequest(string NewOwnerEmail);
+
+/// <summary>The AI-assisted generation request — the user's rough intent, before meta-prompt wrapping (FR-010).</summary>
+public sealed record PromptGenerationRequest(string Intent);
+
+/// <summary>
+/// A successful generation. <paramref name="ModelId"/> records which model actually produced the
+/// text, so a caller can tell a primary result from a fallback result — FR-010's "exactly once"
+/// fallback is observable rather than silent.
+/// </summary>
+public sealed record PromptGenerationResult(string GeneratedText, string ModelId, bool UsedFallback);
+

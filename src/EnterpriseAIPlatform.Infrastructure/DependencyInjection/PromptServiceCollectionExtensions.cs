@@ -25,6 +25,10 @@ public static class PromptServiceCollectionExtensions
 
         services.AddScoped<IPromptService, PromptService>();
 
+        // Generation touches no prompt table — it reads spec 014's model config and calls the
+        // existing completion clients, both registered by AddModelAccess/AddChat.
+        services.AddScoped<IPromptGenerationService, PromptGenerationService>();
+
         return services;
     }
 }

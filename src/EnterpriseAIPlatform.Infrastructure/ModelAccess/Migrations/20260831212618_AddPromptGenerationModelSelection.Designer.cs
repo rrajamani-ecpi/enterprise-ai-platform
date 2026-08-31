@@ -4,6 +4,7 @@ using EnterpriseAIPlatform.Infrastructure.ModelAccess;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EnterpriseAIPlatform.Infrastructure.ModelAccess.Migrations
 {
     [DbContext(typeof(ModelAccessDbContext))]
-    partial class ModelAccessDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260831212618_AddPromptGenerationModelSelection")]
+    partial class AddPromptGenerationModelSelection
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

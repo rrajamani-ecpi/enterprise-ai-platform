@@ -110,15 +110,15 @@ Spec priorities are US1 (P1), US2 (P1), US3 (P2), US4 (P1), US5 (P2), US6 (P2). 
 
 ### Tests for User Story 1
 
-- [ ] T031 [P] [US1] Write `PromptTransferFieldInjectionTests` in `tests/EnterpriseAIPlatform.IntegrationTests/Prompts/PromptTransferFieldInjectionTests.cs` with a corpus of transfer bodies carrying forged `name`/`description`/`createdAt`/`sharedWith`/`ownerUserId`/`collaboratorPartitionKeys`, asserting after each that every non-ownership field equals its pre-transfer value, plus a case asserting a non-owner/non-admin caller is rejected with no write at all — SC-001
+- [X] T031 [P] [US1] Write `PromptTransferFieldInjectionTests` in `tests/EnterpriseAIPlatform.IntegrationTests/Prompts/PromptTransferFieldInjectionTests.cs` with a corpus of transfer bodies carrying forged `name`/`description`/`createdAt`/`sharedWith`/`ownerUserId`/`collaboratorPartitionKeys`, asserting after each that every non-ownership field equals its pre-transfer value, plus a case asserting a non-owner/non-admin caller is rejected with no write at all — SC-001
 
 ### Implementation for User Story 1
 
-- [ ] T032 [US1] Define `TransferPromptOwnershipRequest` in `src/EnterpriseAIPlatform.Domain/Prompts/PromptContracts.cs` with **exactly one** property, `NewOwnerEmail` — the structural defence that makes forged fields unbindable before any handler code runs (FR-005)
-- [ ] T033 [US1] Implement `TransferOwnershipAsync` in `src/EnterpriseAIPlatform.Infrastructure/Prompts/PromptService.cs`: authorize via `PromptAccessEvaluator.CanTransfer` **before any write** (FR-006), load the stored row, and mutate only `OwnerUserId`, `OwnerPartitionKey`, `UpdatedAtUtc`, and `RowVersion` — every other field re-read from the database and written back unchanged (FR-005/FR-008) (depends on T024, T032)
-- [ ] T034 [US1] Wire `POST /api/prompts/{id}/transfer-ownership` in `src/EnterpriseAIPlatform.Web/Endpoints/Prompts/PromptEndpoints.cs`, authorizing in-handler rather than with a route-level `RequireAdmin` — FR-006 permits the owner **or** an admin, so a route policy would wrongly reject the owner (depends on T028, T033)
+- [X] T032 [US1] Define `TransferPromptOwnershipRequest` in `src/EnterpriseAIPlatform.Domain/Prompts/PromptContracts.cs` with **exactly one** property, `NewOwnerEmail` — the structural defence that makes forged fields unbindable before any handler code runs (FR-005)
+- [X] T033 [US1] Implement `TransferOwnershipAsync` in `src/EnterpriseAIPlatform.Infrastructure/Prompts/PromptService.cs`: authorize via `PromptAccessEvaluator.CanTransfer` **before any write** (FR-006), load the stored row, and mutate only `OwnerUserId`, `OwnerPartitionKey`, `UpdatedAtUtc`, and `RowVersion` — every other field re-read from the database and written back unchanged (FR-005/FR-008) (depends on T024, T032)
+- [X] T034 [US1] Wire `POST /api/prompts/{id}/transfer-ownership` in `src/EnterpriseAIPlatform.Web/Endpoints/Prompts/PromptEndpoints.cs`, authorizing in-handler rather than with a route-level `RequireAdmin` — FR-006 permits the owner **or** an admin, so a route policy would wrongly reject the owner (depends on T028, T033)
 - [ ] T035 [US1] Add a transfer-ownership action to `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor`, visible only to the owner or an admin (depends on T029, T034)
-- [ ] T036 [US1] Resolve the spec's open edge case for a transfer targeting a nonexistent or malformed recipient by rejecting the request with a validation error before any write, and add the case to `PromptTransferFieldInjectionTests` (depends on T033)
+- [X] T036 [US1] Resolve the spec's open edge case for a transfer targeting a nonexistent or malformed recipient by rejecting the request with a validation error before any write, and add the case to `PromptTransferFieldInjectionTests` (depends on T033)
 
 **Checkpoint**: Transfer is authorization-correct and injection-proof.
 
@@ -132,13 +132,13 @@ Spec priorities are US1 (P1), US2 (P1), US3 (P2), US4 (P1), US5 (P2), US6 (P2). 
 
 ### Tests for User Story 2
 
-- [ ] T037 [P] [US2] Write `PromptTransferAtomicityTests` in `tests/EnterpriseAIPlatform.IntegrationTests/Prompts/PromptTransferAtomicityTests.cs` — force `SaveChangesAsync` to fail mid-transfer and assert the row still exists unchanged under the original owner, that the operation reports failure, and that an immediate retry succeeds against the intact record with no manual repair — SC-002
-- [ ] T038 [P] [US2] Write `PromptConcurrencyTests` in `tests/EnterpriseAIPlatform.IntegrationTests/Prompts/PromptConcurrencyTests.cs` — two concurrent transfers of the same prompt: the first wins, the second returns HTTP 409, and the prompt exists exactly once under exactly one owner (FR-007/FR-008, double-submit edge case)
+- [X] T037 [P] [US2] Write `PromptTransferAtomicityTests` in `tests/EnterpriseAIPlatform.IntegrationTests/Prompts/PromptTransferAtomicityTests.cs` — force `SaveChangesAsync` to fail mid-transfer and assert the row still exists unchanged under the original owner, that the operation reports failure, and that an immediate retry succeeds against the intact record with no manual repair — SC-002
+- [X] T038 [P] [US2] Write `PromptConcurrencyTests` in `tests/EnterpriseAIPlatform.IntegrationTests/Prompts/PromptConcurrencyTests.cs` — two concurrent transfers of the same prompt: the first wins, the second returns HTTP 409, and the prompt exists exactly once under exactly one owner (FR-007/FR-008, double-submit edge case)
 
 ### Implementation for User Story 2
 
-- [ ] T039 [US2] Confirm `TransferOwnershipAsync` performs a **single** `SaveChangesAsync` on one row with an immutable `Id` — no delete-then-recreate and no compensating action — and document that assertion in the method's XML summary (depends on T033)
-- [ ] T040 [US2] Handle `DbUpdateConcurrencyException` in `PromptService` write and transfer paths by returning `ConcurrencyConflictMessage` rather than retrying silently or last-write-wins (Principle III), and confirm `ToHttpResult` maps it to 409 (depends on T024, T033)
+- [X] T039 [US2] Confirm `TransferOwnershipAsync` performs a **single** `SaveChangesAsync` on one row with an immutable `Id` — no delete-then-recreate and no compensating action — and document that assertion in the method's XML summary (depends on T033)
+- [X] T040 [US2] Handle `DbUpdateConcurrencyException` in `PromptService` write and transfer paths by returning `ConcurrencyConflictMessage` rather than retrying silently or last-write-wins (Principle III), and confirm `ToHttpResult` maps it to 409 (depends on T024, T033)
 - [ ] T041 [US2] Surface the 409 conflict in `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor` as an explicit "reload and retry" message rather than a silent failure or a generic error (depends on T035, T040)
 
 **Checkpoint**: All P1 stories complete — transfer is secure, atomic, and concurrency-safe.
@@ -153,16 +153,16 @@ Spec priorities are US1 (P1), US2 (P1), US3 (P2), US4 (P1), US5 (P2), US6 (P2). 
 
 ### Tests for User Story 3
 
-- [ ] T042 [P] [US3] Write `PromptGenerationFailureTests` in `tests/EnterpriseAIPlatform.IntegrationTests/Prompts/PromptGenerationFailureTests.cs` covering {primary fails, no fallback} and {primary fails, fallback fails}, asserting `Content-Type: application/json` matching the success path, a structured error body, and **no** success-shaped response carrying an error string as generated content — SC-003
-- [ ] T043 [P] [US3] Write `PromptGenerationFallbackTests` in `tests/EnterpriseAIPlatform.UnitTests/Prompts/PromptGenerationFallbackTests.cs` asserting the fallback is attempted **exactly once**, that a primary success never invokes the fallback, and that a model id outside `AllowedModelIds` is rejected as a configuration error rather than silently passed through — FR-010
+- [X] T042 [P] [US3] Write `PromptGenerationFailureTests` in `tests/EnterpriseAIPlatform.IntegrationTests/Prompts/PromptGenerationFailureTests.cs` covering {primary fails, no fallback} and {primary fails, fallback fails}, asserting `Content-Type: application/json` matching the success path, a structured error body, and **no** success-shaped response carrying an error string as generated content — SC-003
+- [X] T043 [P] [US3] Write `PromptGenerationFallbackTests` in `tests/EnterpriseAIPlatform.UnitTests/Prompts/PromptGenerationFallbackTests.cs` asserting the fallback is attempted **exactly once**, that a primary success never invokes the fallback, and that a model id outside `AllowedModelIds` is rejected as a configuration error rather than silently passed through — FR-010
 
 ### Implementation for User Story 3
 
-- [ ] T044 [US3] Add `PrimaryModelId` and `FallbackModelId` to `src/EnterpriseAIPlatform.Domain/ModelAccess/PersonaGenerationModelConfig.cs`, both nullable and both required to be members of `AllowedModelIds` (research.md D8)
-- [ ] T045 [US3] Generate the additive EF Core migration for spec 014's existing context via `dotnet ef migrations add AddPromptGenerationModelSelection --context ModelAccessDbContext` into `src/EnterpriseAIPlatform.Infrastructure/ModelAccess/Migrations/`, and confirm spec 014's existing tests still pass unmodified (depends on T044)
-- [ ] T046 [US3] Define `IPromptGenerationService` in `src/EnterpriseAIPlatform.Application/Prompts/IPromptGenerationService.cs` per contracts/service-interfaces.md
-- [ ] T047 [US3] Implement `PromptGenerationService` in `src/EnterpriseAIPlatform.Infrastructure/Prompts/PromptGenerationService.cs` — wrap user input in the existing fixed meta-prompt, call `PrimaryModelId`, fall back exactly once, and **accumulate** `IChatCompletionClient.StreamCompletionAsync` chunks into a single string rather than adding a non-streaming method to that interface (Principle IV, research.md D8) (depends on T044, T046)
-- [ ] T048 [US3] Wire `POST /api/promptGenerator` in `src/EnterpriseAIPlatform.Web/Endpoints/Prompts/PromptEndpoints.cs`, returning a structured JSON error envelope on total failure — never a plain-text body and never a fabricated success (FR-011, Principle III) (depends on T020, T047)
+- [X] T044 [US3] Add `PrimaryModelId` and `FallbackModelId` to `src/EnterpriseAIPlatform.Domain/ModelAccess/PersonaGenerationModelConfig.cs`, both nullable and both required to be members of `AllowedModelIds` (research.md D8)
+- [X] T045 [US3] Generate the additive EF Core migration for spec 014's existing context via `dotnet ef migrations add AddPromptGenerationModelSelection --context ModelAccessDbContext` into `src/EnterpriseAIPlatform.Infrastructure/ModelAccess/Migrations/`, and confirm spec 014's existing tests still pass unmodified (depends on T044)
+- [X] T046 [US3] Define `IPromptGenerationService` in `src/EnterpriseAIPlatform.Application/Prompts/IPromptGenerationService.cs` per contracts/service-interfaces.md
+- [X] T047 [US3] Implement `PromptGenerationService` in `src/EnterpriseAIPlatform.Infrastructure/Prompts/PromptGenerationService.cs` — wrap user input in the existing fixed meta-prompt, call `PrimaryModelId`, fall back exactly once, and **accumulate** `IChatCompletionClient.StreamCompletionAsync` chunks into a single string rather than adding a non-streaming method to that interface (Principle IV, research.md D8) (depends on T044, T046)
+- [X] T048 [US3] Wire `POST /api/promptGenerator` in `src/EnterpriseAIPlatform.Web/Endpoints/Prompts/PromptEndpoints.cs`, returning a structured JSON error envelope on total failure — never a plain-text body and never a fabricated success (FR-011, Principle III) (depends on T020, T047)
 - [ ] T049 [US3] Add a "generate with AI" affordance to `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor` that populates the description field and renders the structured error on failure (depends on T029, T048)
 
 **Checkpoint**: Prompt generation succeeds and fails in a uniformly JSON-shaped way.
@@ -177,16 +177,16 @@ Spec priorities are US1 (P1), US2 (P1), US3 (P2), US4 (P1), US5 (P2), US6 (P2). 
 
 ### Tests for User Story 5
 
-- [ ] T050 [P] [US5] Write `PromptFavoritesTests` in `tests/EnterpriseAIPlatform.IntegrationTests/Prompts/PromptFavoritesTests.cs` — user A favorites a prompt and it appears in A's list but not B's; repeat-favorite and repeat-unfavorite are both idempotent; favoriting a prompt the caller cannot read returns 401 — SC-007, FR-016
-- [ ] T051 [P] [US5] Write `PromptDeleteCascadeTests` in `tests/EnterpriseAIPlatform.IntegrationTests/Prompts/PromptDeleteCascadeTests.cs` — three users favorite a prompt, it is deleted, and it is then absent from every list, read, and **every** user's favorites, with zero `PromptFavorite` rows remaining — SC-006, FR-017
-- [ ] T052 [P] [US5] Add a case to `PromptFavoritesTests` asserting that transferring ownership leaves every user's favorites untouched, including the former owner's — FR-019
+- [X] T050 [P] [US5] Write `PromptFavoritesTests` in `tests/EnterpriseAIPlatform.IntegrationTests/Prompts/PromptFavoritesTests.cs` — user A favorites a prompt and it appears in A's list but not B's; repeat-favorite and repeat-unfavorite are both idempotent; favoriting a prompt the caller cannot read returns 401 — SC-007, FR-016
+- [X] T051 [P] [US5] Write `PromptDeleteCascadeTests` in `tests/EnterpriseAIPlatform.IntegrationTests/Prompts/PromptDeleteCascadeTests.cs` — three users favorite a prompt, it is deleted, and it is then absent from every list, read, and **every** user's favorites, with zero `PromptFavorite` rows remaining — SC-006, FR-017
+- [X] T052 [P] [US5] Add a case to `PromptFavoritesTests` asserting that transferring ownership leaves every user's favorites untouched, including the former owner's — FR-019
 
 ### Implementation for User Story 5
 
-- [ ] T053 [US5] Implement `ListFavoritesAsync`, `AddFavoriteAsync`, and `RemoveFavoriteAsync` in `src/EnterpriseAIPlatform.Infrastructure/Prompts/PromptService.cs`, scoping every query to the caller's own `UserPartitionKey` and checking `PromptAccessEvaluator.CanRead` before insert (FR-016) (depends on T024)
-- [ ] T054 [US5] Make favorite and unfavorite idempotent by relying on the composite primary key rather than pre-existence checks, so a repeat call is a success rather than a duplicate-key error (depends on T053)
-- [ ] T055 [US5] Confirm `DeleteAsync` contains **no** favorites-cleanup code and that removal comes solely from the FK cascade defined in `PromptDbContext` — Principle V, FR-017 (depends on T016, T024)
-- [ ] T056 [US5] Wire `GET /api/prompts/favorites`, `POST /api/prompts/{id}/favorite`, and `DELETE /api/prompts/{id}/favorite` in `src/EnterpriseAIPlatform.Web/Endpoints/Prompts/PromptEndpoints.cs` per contracts/route-table.md (depends on T028, T053)
+- [X] T053 [US5] Implement `ListFavoritesAsync`, `AddFavoriteAsync`, and `RemoveFavoriteAsync` in `src/EnterpriseAIPlatform.Infrastructure/Prompts/PromptService.cs`, scoping every query to the caller's own `UserPartitionKey` and checking `PromptAccessEvaluator.CanRead` before insert (FR-016) (depends on T024)
+- [X] T054 [US5] Make favorite and unfavorite idempotent by relying on the composite primary key rather than pre-existence checks, so a repeat call is a success rather than a duplicate-key error (depends on T053)
+- [X] T055 [US5] Confirm `DeleteAsync` contains **no** favorites-cleanup code and that removal comes solely from the FK cascade defined in `PromptDbContext` — Principle V, FR-017 (depends on T016, T024)
+- [X] T056 [US5] Wire `GET /api/prompts/favorites`, `POST /api/prompts/{id}/favorite`, and `DELETE /api/prompts/{id}/favorite` in `src/EnterpriseAIPlatform.Web/Endpoints/Prompts/PromptEndpoints.cs` per contracts/route-table.md (depends on T028, T053)
 - [ ] T057 [US5] Add a favorite toggle and a favorites filter to `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor` (depends on T029, T056)
 
 **Checkpoint**: Favorites work per-user and disappear structurally on delete.
@@ -201,12 +201,12 @@ Spec priorities are US1 (P1), US2 (P1), US3 (P2), US4 (P1), US5 (P2), US6 (P2). 
 
 ### Tests for User Story 6
 
-- [ ] T058 [P] [US6] Write `ChatComposerStateSeedTests` in `tests/EnterpriseAIPlatform.UnitTests/Chat/ChatComposerStateSeedTests.cs` asserting `SeedFromPrompt` assigns `Description` with zero substitution, including descriptions containing `[bracket]` text, `{brace}` text, and newlines, all of which must survive unchanged — SC-008, FR-012
-- [ ] T059 [P] [US6] Add a case asserting `SeedFromPrompt` raises `OnChanged` so a subscribed composer re-renders
+- [X] T058 [P] [US6] Write `ChatComposerStateSeedTests` in `tests/EnterpriseAIPlatform.UnitTests/Chat/ChatComposerStateSeedTests.cs` asserting `SeedFromPrompt` assigns `Description` with zero substitution, including descriptions containing `[bracket]` text, `{brace}` text, and newlines, all of which must survive unchanged — SC-008, FR-012
+- [X] T059 [P] [US6] Add a case asserting `SeedFromPrompt` raises `OnChanged` so a subscribed composer re-renders
 
 ### Implementation for User Story 6
 
-- [ ] T060 [US6] Add `SeedFromPrompt(PromptModel prompt)` to `src/EnterpriseAIPlatform.Web/Services/ChatComposerState.cs`, assigning `prompt.Description` to `ComposerText` verbatim and raising `OnChanged` (research.md D11)
+- [X] T060 [US6] Add `SeedFromPrompt(PromptModel prompt)` to `src/EnterpriseAIPlatform.Web/Services/ChatComposerState.cs`, assigning `prompt.Description` to `ComposerText` verbatim and raising `OnChanged` (research.md D11)
 - [ ] T061 [US6] Add a "use this prompt" action to `src/EnterpriseAIPlatform.Web/Components/Prompts/PromptLibrary.razor` that calls `SeedFromPrompt` and navigates to the chat surface (depends on T029, T060)
 - [ ] T062 [US6] Verify the seeded text flows through spec 024's **existing** chat send path with no second send route introduced — Principle IV (depends on T061)
 - [ ] T063 [US6] Confirm `SeedFromPrompt` is reachable from any prompt-referencing entry point, not only the library, satisfying FR-018 without implementing landing-action configuration (out of scope, spec 021) (depends on T060)
