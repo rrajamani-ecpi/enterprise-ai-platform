@@ -8,6 +8,16 @@
 
 **Input**: Derived from SSD_Document.md §3.9 (Domain: Prompt Library) — reframed from "as-is" discovery findings into target requirements. Source facts: `TransferPromptOwnerShip` trusts client-supplied JSON for `name`/`description`/`createdAt`/`sharedWith` instead of re-deriving those fields from the server-verified record (only ownership is actually checked); ownership transfer is implemented as delete-then-recreate under the new owner's partition key, with no rollback if the recreate fails; and total prompt-generator failure (primary + fallback model both fail) returns a plain-text 500 body inconsistent with the JSON content-type of the success path. Extended per `docs/PRODUCT_REQUIREMENTS_DOCUMENT.md` §4.8 (Prompts) to cover the full forward-looking requirement set — REQ-PROMPT-1 (create/edit/delete), REQ-PROMPT-2 (favoriting, sharing, ownership transfer), and REQ-PROMPT-3 (launch a chat pre-seeded from a prompt) — per `docs/prd-decomposition-plan.md`'s routing of §4.8 to this spec ("Good coverage already," with sharing itself deferred to spec 018's canonical policy).
 
+## Clarifications
+
+### Session 2026-08-31
+
+- Q: Which user stories are in scope for this increment? → A: All six (US1–US6) — the full spec, including US6's chat-seeding UI. Matches how specs 009 and 018 shipped their full scope, and the stories are coupled (FR-017 ties favorites to delete).
+- Q: Where do prompts persist, and how is atomic ownership transfer (FR-007) implemented? → A: Azure SQL via EF Core (a new `PromptDbContext`), per the constitution's naming of prompts as a schema-stable relational entity and mirroring spec 009's `PersonaDbContext`. Ownership transfer is therefore a single atomic `UPDATE` of the owner column guarded by a `RowVersion` optimistic-concurrency token — never delete-then-recreate, and requiring no compensating action.
+- Q: How should FR-004's sharing-target role gating be implemented? → A: Consume spec 018's `ISharingPolicyService` directly — spec 016 becomes its first production consumer, resolving a `SharingDecision` rather than re-deriving role rules. No prompt-local re-implementation, per Constitution Principle IV (one implementation per concern). Refactoring spec 009's persona sharing onto the same service remains out of scope here.
+- Q: Where do FR-010's primary and fallback prompt-generation models come from? → A: Spec 014's existing `PersonaGenerationModelConfig` singleton — already documented as the allow-list for "AI-assisted persona/prompt generation" — extended with explicit ordered `PrimaryModelId` and `FallbackModelId` fields, with `AllowedModelIds` retained as the validity set both must belong to. No separate prompt-generation config entity (Principle IV). Selection remains read-open / admin-gated for writes, per spec 014 FR-005/007.
+- Q: How are favorites kept consistent when a prompt is deleted or transferred? → A: A foreign-key cascade delete in Azure SQL removes `PromptFavorite` rows for every user when the prompt row is deleted — schema-enforced per Principle V, so SC-006's "0 dangling references" holds structurally rather than depending on each delete call site. Ownership transfer leaves all users' favorites untouched, including the former owner's, since FR-016 defines favoriting as independent of ownership.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Ownership transfer cannot be used to inject arbitrary field values (Priority: P1)
@@ -30,7 +40,7 @@ An owner or admin transfers a prompt to a new owner. The transfer request is a d
 
 An owner or admin transfers a prompt to a new owner, and the underlying write to the new owner's partition fails partway through.
 
-**Why this priority**: Ownership transfer is implemented as delete-then-recreate under the new owner's partition key (Cosmos partition key = `userId`), with no rollback if the recreate step fails after the delete has already succeeded — this permanently loses the prompt. Combined with Story 1, this makes the current transfer path both insecure and unsafe; both must be fixed together before ownership transfer can be considered production-ready, so this is equally P1.
+**Why this priority**: Ownership transfer is implemented (in the legacy accelerator) as delete-then-recreate under the new owner's partition key (Cosmos partition key = `userId`), with no rollback if the recreate step fails after the delete has already succeeded — this permanently loses the prompt. Combined with Story 1, this makes the current transfer path both insecure and unsafe; both must be fixed together before ownership transfer can be considered production-ready, so this is equally P1. The target implementation stores prompts in Azure SQL (see Clarifications), where transfer is a single atomic row update and the delete-then-recreate failure mode cannot arise.
 
 **Independent Test**: Trigger a transfer where the recreate step is made to fail (e.g., simulated write failure) and confirm the original prompt still exists, fully intact, under the original owner — the operation reports failure rather than silently losing the record.
 
@@ -107,11 +117,11 @@ A user selects a saved prompt from the library (or via any other entry point tha
 ### Edge Cases
 
 - What happens when a transfer request targets a new owner who does not exist or is not a valid recipient (e.g., malformed email/user identifier)?
-- How does the system handle a transfer request submitted twice in quick succession (double-submit) against the same prompt?
+- How does the system handle a transfer request submitted twice in quick succession (double-submit) against the same prompt? — the `rowVersion` concurrency token rejects the second write; the loser retries against the intact record (FR-007).
 - What happens when the primary model fails but the fallback model succeeds — does the response format match the JSON success/failure contract established here?
 - How does `EnsurePromptOperation` behave when the prompt referenced in a transfer request was deleted or already transferred by another caller between page load and submission?
-- What happens to a favorited prompt when it is transferred to a new owner (Story 2) — does it remain favorited for users other than the new/former owner?
-- What happens when a user attempts to favorite a prompt they have no read access to?
+- What happens to a favorited prompt when it is transferred to a new owner (Story 2)? — favorites are unchanged for every user, including the former owner (FR-019).
+- What happens when a user attempts to favorite a prompt they have no read access to? — rejected; FR-016 requires at least read access.
 
 ## Requirements *(mandatory)*
 
@@ -120,26 +130,27 @@ A user selects a saved prompt from the library (or via any other entry point tha
 - **FR-001**: `EnsurePromptOperation` MUST grant write access only to admins, the prompt's owner, or its collaborators.
 - **FR-002**: `EnsurePromptOperation` MUST grant read access additionally to anyone the prompt is `sharedWith` (individual email or group token).
 - **FR-003**: The system MUST require non-empty `name` and non-empty `description` for prompt create/update operations.
-- **FR-004**: Prompt sharing targets MUST be role-gated per the canonical sharing policy defined in spec 018 (Sharing & Permissions Policy) — `RoleSharingPolicy` and any active `GlobalSharingOverride` — rather than a prompt-specific reimplementation of those rules. *(REQ-PROMPT-2, sharing half — see spec 018 for the policy itself)*
+- **FR-004**: Prompt sharing targets MUST be role-gated by resolving a `SharingDecision` from spec 018's `ISharingPolicyService` — which applies `RoleSharingPolicy` and any active `GlobalSharingOverride` — rather than a prompt-specific reimplementation of those rules. *(REQ-PROMPT-2, sharing half — see spec 018 for the policy itself)*
 - **FR-005**: The ownership-transfer operation MUST re-derive `name`, `description`, `createdAt`, `sharedWith`, and all other non-ownership fields from the server-side record at the time of transfer, and MUST discard any client-supplied values for those fields.
 - **FR-006**: The ownership-transfer operation MUST authorize the caller (owner or admin) before performing any write, consistent with existing behavior.
 - **FR-007**: The ownership-transfer operation MUST be atomic or recoverable: if the write under the new owner's partition fails, the original record under the original owner MUST remain intact and the operation MUST report failure rather than leaving the prompt in a lost or duplicated state.
 - **FR-008**: On successful transfer, the prompt MUST exist exactly once, under the new owner, and no longer under the original owner.
 - **FR-009**: `EnsurePromptOperation` failures MUST continue to return a uniform, ambiguous `UNAUTHORIZED` result regardless of whether the true cause is "not found" or "forbidden," consistent with the equivalent persona-access pattern.
-- **FR-010**: AI-assisted prompt generation MUST wrap user input in the existing fixed prompt-engineering meta-prompt and call a primary model, falling back once to a secondary model on primary failure.
+- **FR-010**: AI-assisted prompt generation MUST wrap user input in the existing fixed prompt-engineering meta-prompt and call the configured `PrimaryModelId`, falling back exactly once to the configured `FallbackModelId` on primary failure. Both model ids MUST be drawn from spec 014's `PersonaGenerationModelConfig` and MUST be members of its `AllowedModelIds` validity set; if no fallback is configured, a primary failure proceeds directly to the FR-011 error response.
 - **FR-011**: When both the primary and fallback models fail, the prompt-generation endpoint MUST return a structured JSON error body with the same content-type used by the success path, rather than a plain-text body.
 - **FR-012**: Selecting a saved prompt MUST copy its `description` field verbatim into the chat input textarea, with no variable/placeholder substitution performed.
 - **FR-013**: The system MUST let a user create a new prompt with non-empty `name` and `description`, owned by that user. *(REQ-PROMPT-1)*
 - **FR-014**: The system MUST let the owner, an admin, or a designated collaborator (per FR-001) edit an existing prompt's `name`/`description`. *(REQ-PROMPT-1)*
 - **FR-015**: The system MUST let the owner or an admin permanently delete a prompt; a deleted prompt MUST NOT be returned by any subsequent list, read, or favorites operation, for any user. *(REQ-PROMPT-1)*
 - **FR-016**: The system MUST support per-user favoriting and unfavoriting of any prompt the user has at least read access to, tracked independently of any other user's favorites and independently of the prompt's own ownership/sharing fields. *(REQ-PROMPT-2, favoriting half)*
-- **FR-017**: Deleting a prompt MUST remove it from every user's favorites list, leaving no dangling references. *(REQ-PROMPT-1 / REQ-PROMPT-2)*
+- **FR-017**: Deleting a prompt MUST remove it from every user's favorites list, leaving no dangling references; this MUST be enforced by a database-level cascade on the `PromptFavorite`→`PromptModel` relationship rather than by cleanup logic at each delete call site. *(REQ-PROMPT-1 / REQ-PROMPT-2)*
+- **FR-019**: Ownership transfer MUST NOT alter any user's favorites, including the former owner's — favoriting is independent of ownership per FR-016.
 - **FR-018**: Selecting a prompt — whether from the prompt library directly or via any other entry point that references a prompt (e.g., a configured landing action, defined in a separate preferences spec) — MUST result in a chat populated with that prompt's content, satisfied by the copy-into-input mechanic defined in FR-012. This spec does not define how such entry points are configured. *(REQ-PROMPT-3)*
 
 ### Key Entities *(include if feature involves data)*
 
-- **PromptModel**: `id`, `userId` (owner), `name` (title), `description` (the actual reusable prompt text — there is no separate `content`/`template` field), `sharedWith?`, `collaborators?`, `isPublished?` (legacy, superseded by `sharedWith`), `createdAt`. No template-variable/placeholder engine exists on this entity.
-- **PromptFavorite**: `userId`, `promptIds[]` — per-user favorites list, mirroring the existing `Persona Favorite` entity; independent of a prompt's ownership/sharing state.
+- **PromptModel**: `id`, `userId` (owner), `name` (title), `description` (the actual reusable prompt text — there is no separate `content`/`template` field), `sharedWith?`, `collaborators?`, `isPublished?` (legacy, superseded by `sharedWith`), `createdAt`, `rowVersion` (optimistic-concurrency token). Persisted as a relational entity in Azure SQL via EF Core (`PromptDbContext`). No template-variable/placeholder engine exists on this entity.
+- **PromptFavorite**: `userId`, `promptId` — per-user favorites, mirroring the existing `Persona Favorite` entity; independent of a prompt's ownership/sharing state. Holds a foreign key to `PromptModel` with cascade delete (FR-017).
 
 ## Success Criteria *(mandatory)*
 
@@ -158,7 +169,7 @@ A user selects a saved prompt from the library (or via any other entry point tha
 
 - Selecting a saved prompt copying `description` verbatim with no variable/placeholder substitution is an accepted, explicit limitation of this feature, not a bug to be fixed — `[bracket]` conventions in seed content remain purely cosmetic.
 - `EnsurePromptOperation` returning a uniform ambiguous `UNAUTHORIZED` for both not-found and forbidden cases is intentional, matching the established persona-access pattern elsewhere in the codebase, and is retained as-is.
-- "Atomic or recoverable" for ownership transfer does not require introducing a full distributed-transaction mechanism; a verify-before-delete / write-then-delete ordering, or an equivalent compensating-action approach, satisfies this requirement as long as failure never results in a lost or duplicated prompt.
-- Sharing-permission rules (role-gating of sharing targets) are the canonical policy defined in spec 018 (Sharing & Permissions Policy) — this spec consumes that policy's `SharingDecision` rather than redefining role-gating rules itself; refactoring the current implementation onto spec 018 is tracked there, not here.
+- "Atomic or recoverable" for ownership transfer does not require introducing a full distributed-transaction mechanism. With prompts stored in Azure SQL (see Clarifications), FR-007 is satisfied by a single atomic `UPDATE` of the owner column guarded by the `rowVersion` concurrency token — no delete-then-recreate, and therefore no compensating action to write.
+- Sharing-permission rules (role-gating of sharing targets) are the canonical policy defined in spec 018 (Sharing & Permissions Policy) — this spec consumes that policy's `SharingDecision` via `ISharingPolicyService` and is its first production consumer. Refactoring spec 009's persona sharing onto the same service is tracked separately, not here.
 - Favoriting (Story 5 / FR-016-017) is a simple per-user list, mirroring the existing `Persona Favorite` entity; it carries no notification or ordering semantics beyond membership.
 - Configuring a favorite prompt as a landing action (PRD §4.19, User Preferences) is out of scope for this spec — FR-018 defines only the prompt-selection-to-chat mechanic, not landing-action resolution or fallback behavior.
