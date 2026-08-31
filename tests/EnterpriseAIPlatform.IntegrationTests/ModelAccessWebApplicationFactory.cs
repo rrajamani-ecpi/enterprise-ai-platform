@@ -40,20 +40,28 @@ public class ModelAccessWebApplicationFactory : WebApplicationFactory<Program>
                 options.DefaultForbidScheme = TestAuthHandler.SchemeName;
             });
 
-            // Remove every EF-Core-related descriptor the production registration added
-            // (UseSqlServer registers its provider services onto this same collection, not just
-            // DbContextOptions<T> — removing only that descriptor leaves both providers
-            // registered and EF throws "multiple database providers registered"). ModelAccessDbContext
-            // is the only EF Core consumer in this app, so this is safe.
-            var efDescriptors = services
-                .Where(d => d.ServiceType.Namespace?.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) == true)
+            // Remove only ModelAccessDbContext's own descriptors — a blanket removal of every
+            // EF-Core-namespaced descriptor would also strip spec 009's PersonaDbContext
+            // registration, which the ASP.NET Core Development-environment eager DI validation
+            // (ValidateOnBuild) then fails on for every Persona-dependent service, even though
+            // this factory never touches Personas.
+            var modelAccessDescriptors = services
+                .Where(d => d.ServiceType == typeof(DbContextOptions<ModelAccessDbContext>) || d.ServiceType == typeof(ModelAccessDbContext))
                 .ToList();
-            foreach (var descriptor in efDescriptors)
+            foreach (var descriptor in modelAccessDescriptors)
             {
                 services.Remove(descriptor);
             }
 
-            services.AddDbContext<ModelAccessDbContext>(options => options.UseInMemoryDatabase(_databaseName));
+            // Isolated internal service provider (see PersonaWebApplicationFactory for the same
+            // pattern, needed the same way now that spec 009's PersonaDbContext (SqlServer)
+            // coexists in this container) — EF Core's default internal service provider is scanned
+            // per-app, not per-DbContext, so without this, InMemory's provider services here would
+            // collide with PersonaDbContext's untouched SqlServer registration.
+            var modelAccessInternalServices = new ServiceCollection().AddEntityFrameworkInMemoryDatabase().BuildServiceProvider();
+            services.AddDbContext<ModelAccessDbContext>(options => options
+                .UseInMemoryDatabase(_databaseName)
+                .UseInternalServiceProvider(modelAccessInternalServices));
 
             services.RemoveAll<IDistributedCache>();
             services.AddDistributedMemoryCache();

@@ -45,15 +45,24 @@ public class ChatWebApplicationFactory : WebApplicationFactory<Program>
                 options.DefaultForbidScheme = TestAuthHandler.SchemeName;
             });
 
-            var efDescriptors = services
-                .Where(d => d.ServiceType.Namespace?.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) == true)
+            // Remove only ModelAccessDbContext's own descriptors, and isolate its InMemory
+            // provider into its own internal service provider — a blanket EF-Core-namespace sweep
+            // would strip spec 009's PersonaDbContext registration entirely (unresolvable), and
+            // without isolation, InMemory's provider services would collide with PersonaDbContext's
+            // untouched SqlServer registration ("multiple database providers registered"). See
+            // ModelAccessWebApplicationFactory/PersonaWebApplicationFactory for the same pattern.
+            var modelAccessDescriptors = services
+                .Where(d => d.ServiceType == typeof(DbContextOptions<ModelAccessDbContext>) || d.ServiceType == typeof(ModelAccessDbContext))
                 .ToList();
-            foreach (var descriptor in efDescriptors)
+            foreach (var descriptor in modelAccessDescriptors)
             {
                 services.Remove(descriptor);
             }
 
-            services.AddDbContext<ModelAccessDbContext>(options => options.UseInMemoryDatabase(_databaseName));
+            var modelAccessInternalServices = new ServiceCollection().AddEntityFrameworkInMemoryDatabase().BuildServiceProvider();
+            services.AddDbContext<ModelAccessDbContext>(options => options
+                .UseInMemoryDatabase(_databaseName)
+                .UseInternalServiceProvider(modelAccessInternalServices));
 
             services.RemoveAll<IDistributedCache>();
             services.AddDistributedMemoryCache();
