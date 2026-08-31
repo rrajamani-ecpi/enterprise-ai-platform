@@ -183,9 +183,11 @@ public sealed class PromptService : IPromptService
     public async Task<ServerActionResponse<PromptPublicDTO>> TransferOwnershipAsync(
         string promptId, string newOwnerEmail, UserModel caller, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(newOwnerEmail))
+        // T036 / FR-005: a malformed recipient is rejected before any write, so a bad request can
+        // never leave the prompt half-transferred or owned by an unresolvable identity.
+        if (!TryValidateRecipient(newOwnerEmail, out var recipientError))
         {
-            return ServerActionResponse<PromptPublicDTO>.Error("A new owner is required.");
+            return ServerActionResponse<PromptPublicDTO>.Error(recipientError!);
         }
 
         var prompt = await _db.Prompts.FirstOrDefaultAsync(p => p.Id == promptId, cancellationToken);
@@ -275,7 +277,20 @@ public sealed class PromptService : IPromptService
             FavoritedAtUtc = DateTimeOffset.UtcNow,
         });
 
-        await _db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is DbUpdateException or ArgumentException)
+        {
+            // FR-016 idempotency ultimately rests on the composite primary key
+            // (UserPartitionKey, PromptId), not on the read above: two concurrent favorite calls
+            // both pass that check, and only the constraint stops the second from creating a
+            // duplicate. Treating the violation as success is what makes a repeat call a no-op
+            // rather than an error.
+            _db.ChangeTracker.Clear();
+        }
+
         return ServerActionResponse<bool>.Ok(true);
     }
 
@@ -298,6 +313,39 @@ public sealed class PromptService : IPromptService
         await _db.SaveChangesAsync(cancellationToken);
 
         return ServerActionResponse<bool>.Ok(true);
+    }
+
+    /// <summary>
+    /// T036 / FR-005: rejects a missing or structurally malformed recipient before any write.
+    /// Deliberately a shape check only — this build has no directory-lookup seam to confirm the
+    /// address resolves to a real user, and inventing one here would duplicate identity
+    /// resolution outside spec 002's single owner of it.
+    /// </summary>
+    private static bool TryValidateRecipient(string? newOwnerEmail, out string? error)
+    {
+        if (string.IsNullOrWhiteSpace(newOwnerEmail))
+        {
+            error = "A new owner is required.";
+            return false;
+        }
+
+        var trimmed = newOwnerEmail.Trim();
+        var atIndex = trimmed.IndexOf('@');
+        var isWellFormed = atIndex > 0
+            && atIndex == trimmed.LastIndexOf('@')
+            && atIndex < trimmed.Length - 1
+            && !trimmed.Contains(' ')
+            && trimmed.LastIndexOf('.') > atIndex + 1
+            && trimmed.LastIndexOf('.') < trimmed.Length - 1;
+
+        if (!isWellFormed)
+        {
+            error = "The new owner must be a valid email address.";
+            return false;
+        }
+
+        error = null;
+        return true;
     }
 
     /// <summary>
