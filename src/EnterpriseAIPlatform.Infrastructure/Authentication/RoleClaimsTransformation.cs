@@ -28,8 +28,14 @@ public sealed class RoleClaimsTransformation : IClaimsTransformation
             return Task.FromResult(principal);
         }
 
-        var groupIds = principal.FindAll("groups")
-            .Select(c => Guid.TryParse(c.Value, out var g) ? g : (Guid?)null)
+        var groupClaimValues = principal.FindAll("groups")
+            .Select(c => c.Value)
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        var groupIds = groupClaimValues
+            .Select(v => Guid.TryParse(v, out var g) ? g : (Guid?)null)
             .Where(g => g is not null)
             .Select(g => g!.Value)
             .ToArray();
@@ -45,6 +51,17 @@ public sealed class RoleClaimsTransformation : IClaimsTransformation
         identity.AddClaim(new Claim(AppClaimTypes.IsContractor, flags.IsContractor ? "true" : "false"));
         identity.AddClaim(new Claim(AppClaimTypes.IsStudent, flags.IsStudent ? "true" : "false"));
         identity.AddClaim(new Claim(AppClaimTypes.ImpersonateAsStudent, impersonate ? "true" : "false"));
+
+        // Spec 016 (research.md D6): retain the group values this transformation already reads,
+        // instead of discarding them after deriving role flags. Group-token share targets
+        // (PromptModel.SharedWith) are matched against these, so read access via a group grant is
+        // resolvable server-side from a verified claim. Retained as raw strings, not parsed GUIDs —
+        // a group token is opaque, and non-GUID values are legitimate for role derivation to ignore
+        // while sharing still honours them.
+        foreach (var groupValue in groupClaimValues)
+        {
+            identity.AddClaim(new Claim(AppClaimTypes.GroupToken, groupValue));
+        }
 
         principal.AddIdentity(identity);
         return Task.FromResult(principal);

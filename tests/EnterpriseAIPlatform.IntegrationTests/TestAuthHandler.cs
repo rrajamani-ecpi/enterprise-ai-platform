@@ -21,6 +21,9 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
     public const string AdminHeader = "X-Test-Admin";
     public const string RolesHeader = "X-Test-Roles";
 
+    /// <summary>Comma-separated opaque group tokens (spec 016 FR-002), e.g. <c>engineering-all</c>.</summary>
+    public const string GroupsHeader = "X-Test-Groups";
+
     public TestAuthHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
         ILoggerFactory logger,
@@ -56,6 +59,16 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
             new(AppClaimTypes.IsContractor, isContractor ? "true" : "false"),
             new(AppClaimTypes.IsStudent, isStudent ? "true" : "false"),
         };
+
+        // Spec 016: the transformation is bypassed here (RolesTransformed is already set), so group
+        // tokens are emitted directly in the same shape PrincipalUserMapper reads.
+        if (Request.Headers.TryGetValue(GroupsHeader, out var groupsHeader))
+        {
+            foreach (var token in groupsHeader.ToString().Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                claims.Add(new Claim(AppClaimTypes.GroupToken, token));
+            }
+        }
 
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, SchemeName));
         var ticket = new AuthenticationTicket(principal, SchemeName);

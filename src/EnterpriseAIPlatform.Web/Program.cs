@@ -10,6 +10,7 @@ using EnterpriseAIPlatform.Web.Endpoints.Chat;
 using EnterpriseAIPlatform.Web.Endpoints.ModelAccess;
 using EnterpriseAIPlatform.Web.Endpoints.MultiChat;
 using EnterpriseAIPlatform.Web.Endpoints.Personas;
+using EnterpriseAIPlatform.Web.Endpoints.Prompts;
 using EnterpriseAIPlatform.Web.Endpoints.Support;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -80,6 +81,9 @@ builder.Services.AddSharingInfrastructure(builder.Configuration);
 
 // --- Spec 009: persona CRUD + authorization (depends only on 002) ---
 builder.Services.AddPersonaInfrastructure(builder.Configuration);
+
+// --- Spec 016: prompt CRUD + sharing + ownership transfer (depends on 002, 014, 018) ---
+builder.Services.AddPromptInfrastructure(builder.Configuration);
 
 // --- Authorization: deny-by-default fallback + server-side admin gate (spec 002 FR-011/012/013) ---
 builder.Services.AddAuthorizationBuilder()
@@ -161,6 +165,9 @@ app.MapSupportEndpoints();
 
 // Spec 009: persona CRUD + authorization.
 app.MapPersonaEndpoints();
+
+// Spec 016: prompt CRUD + sharing + ownership transfer.
+app.MapPromptEndpoints();
 
 app.MapControllers();
 
